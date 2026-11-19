@@ -35,7 +35,7 @@ A retail EX30 needs an installation channel Volvo permits. This fork has no Goog
 2. Approve the permissions Android shows. Android can group vehicle speed under location, energy under car information and Bluetooth under nearby devices.
 3. Select the exact name displayed on your Pi, then tap **Pair** in Android’s system dialog. There is no code to enter. The Pi saves the first bonded car that connects to its display service.
 
-On later trips, the app connects to that display in the background. It closes the connection when the EX30 indicates the driver has left or its screen turns off, unless the charge port is connected. After a head-unit reboot the service starts on the normal Android boot broadcast for the user. Force-stopping the Android app requires opening it again.
+On later trips, the app connects to that display in the background. It closes the connection when the EX30 indicates the driver has left or its screen turns off. A connected charge port keeps the link active. If port status is unavailable, the app uses the car’s active charging state. After a head-unit reboot the service starts on the normal Android boot broadcast for the user. Force-stopping the Android app requires opening it again.
 
 ## Checking the display
 
@@ -62,6 +62,7 @@ Run the preview and instrument tests from the repository root with Python 3 and 
 ```sh
 python3 display/preview.py day /tmp/ex30-day.png
 python3 display/preview.py night /tmp/ex30-night.png
+python3 display/preview.py day /tmp/ex30-charging.png --charging
 PYTHONPATH=display python3 -m unittest discover -s display/tests -v
 ```
 

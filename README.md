@@ -34,9 +34,19 @@ No Wi-Fi password, camera, OBD adapter or internet connection is needed for the 
 
 A missing speed displays a dash. Each snapshot replaces all the previous readings. If the car goes silent for three seconds, the Pi clears the instruments. The photograph’s recognized speed-limit sign, automatic-wiper indicator and position lamps are left empty because this app has no verified read for their factory states. Use the car’s instruments for warnings. [Vehicle signals](ex30-companion-aaos/docs/properties.md)
 
+## Active charging
+
+![Charging at 64 percent, with 384 km of range, 1 h 15 min remaining, 22 kW into the battery, and a 90 percent target](docs/charging-day.png)
+
+The EX90 puts the charging status and session details on the left, the current percentage on the right, and a marker at the selected target. The green fill tracks the current charge. Its pulse continues while readings are steady. The Pi uses the EX30’s relative “Done in” wording and shows the car’s estimate and target only when available. The kW figure is net power going into the battery. [Volvo’s EX90 instrument-panel illustration](https://www.volvocars.com/media/support-content/img2bd25bed8087ea7ac0a801f2015637bf_1_--_--_SVG.png) · [Kiosk in dark mode](docs/charging-night.png)
+
+The archived EX30 emulator contains the driver-strip illustration in its built-in manual. In `UserManual.apk`, the English article “Charging status in the display” points into `assets/default/documentAssetBundle.zip` to `img504ec2510898026ec0a801f21c4aa44d_1_--_--_SVG.svg`. Its embedded daylight image supplies the charcoal text (#2e2e2e), light grey background (#ebebeb), sage-green fill and percent proportions. The night treatment combines the existing EX30 night palette with green sampled from the EX90 illustration. [EX30 charging status guide](https://www.volvocars.com/us/support/car/ex30/article/a3d4c324d33d417cc0a8cc37744d76ea-ec8b59f1d33539aec0a8cc374c819eab-77f3800cb793a946c0a8b05d49c187d2/)
+
+The car’s reported charging state takes precedence. On cars that omit it, the display requires Park, a connected plug and at least 100 W of net charging power. Known motion or a driving gear selects the driving view. A plugged-in car that reports idle, full or fault stays on the parked driving view with the plug indicator. [Charging signals and availability](ex30-companion-aaos/docs/properties.md)
+
 ## Verification
 
-Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display followed background day/night changes, recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens and lettering from both versions of the car app. Physical EX30 Bluetooth policy, a Raspberry Pi’s radio and the attached panel still need a hardware test. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
+Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display switched to charging when the car reported an active session, followed day/night changes, and returned to the parked view when charging finished with the cable still connected. It also recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens. Current and earlier lettering frames both render. Charging-property availability on a retail EX30, its Bluetooth policy, the Pi’s radio and the attached panel still need a hardware test. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
 
 ## Project
 

@@ -112,6 +112,44 @@ class InstrumentTests(unittest.TestCase):
             cluster.draw(canvas(), 960, 240, {"parking_brake": True})
             brake.assert_called_once()
 
+    def test_active_charging_and_legacy_detection(self):
+        plugged = {"charge_port_connected": True, "gear_selected": "P", "speed_display_aaos": 0}
+        self.assertFalse(cluster.is_charging(plugged))
+        self.assertFalse(cluster.is_charging(dict(plugged, battery_power_mw=4_000)))
+        self.assertTrue(cluster.is_charging(dict(plugged, battery_power_mw=1_400_000)))
+        self.assertTrue(cluster.is_charging({"charging_active": True}))
+        self.assertFalse(cluster.is_charging({"battery_power_mw": 22_000_000}))
+        for change in ({"charging_active": False}, {"charge_port_connected": False},
+                       {"gear_selected": "D"}, {"gear_selected": "R"}, {"speed_display_aaos": 0.5}):
+            fields = dict(plugged, battery_power_mw=22_000_000, charging_active=True)
+            fields.update(change)
+            with self.subTest(change=change):
+                self.assertFalse(cluster.is_charging(fields))
+
+    def test_charging_uses_only_available_readings(self):
+        fields = {"charging_active": True, "soc_aaos": 32_000, "usable_capacity_wh": 50_000,
+                  "range_m_aaos": 160934.4, "distance_unit": "mi", "battery_power_mw": 7_200_000,
+                  "charge_target_pct": 90, "charge_seconds_remaining": 4450}
+        self.assertEqual(labels(fields), ["Charging", "100", "mi", "Done in", "1", "h", "15", "min",
+                                           "7.2", "kW", "64", "%", "90%"])
+        self.assertEqual(labels({"charging_active": True, "battery_power_mw": -1_000_000,
+                                 "charge_target_pct": 150, "charge_seconds_remaining": 0}), ["Charging", "–"])
+        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600})), [["Done in", "1", "h"]])
+        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1})), [["Done in", "1", "min"]])
+
+    def test_charging_fill_tracks_battery_level_in_both_modes(self):
+        for dark in (False, True):
+            surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 448)
+            fields = {"charging_active": True, "soc_aaos": 25, "usable_capacity_wh": 100, "charge_target_pct": 90}
+            with patch("cluster.time.monotonic", return_value=0):
+                cluster.draw(cairo.Context(surface), 1920, 448, fields, dark=dark)
+            surface.flush()
+            pixels = memoryview(surface.get_data()).cast("I")
+            bg = pixels[0]
+            self.assertNotEqual(pixels[325 * 1920 + 479], bg)
+            self.assertEqual(pixels[325 * 1920 + 480], bg)
+            self.assertNotEqual(pixels[354 * 1920 + 1728], bg)
+
 
 class StreamTests(unittest.TestCase):
     @patch("stream.Lettering")
