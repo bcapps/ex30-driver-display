@@ -19,15 +19,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ex30companion"
+        applicationId = "com.bcapps.ex30display"
         minSdk = 32
-        // Bumped to 34 for Play Store acceptance (lintVitalRelease enforces
-        // ExpiredTargetSdkVersion). Triggers the API-35 foreground-service-type
-        // requirement, satisfied via FOREGROUND_SERVICE_CONNECTED_DEVICE +
-        // android:foregroundServiceType="connectedDevice" on BridgeService.
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.0.6"
+        versionCode = 1
+        versionName = "0.1.0"
     }
 
     signingConfigs {
@@ -79,7 +75,6 @@ kotlin {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

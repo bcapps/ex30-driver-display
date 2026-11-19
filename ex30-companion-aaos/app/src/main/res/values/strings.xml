@@ -1,13 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">EX30 Companion</string>
-    <string name="rationale_title">Vehicle telemetry — read only</string>
-    <string name="rationale_body">This app reads vehicle telemetry such as speed, gear, EV battery state, pedal position, and turn signals.\n\nIt never writes to any vehicle property.\n\nData leaves the car only over a local network connection to your Raspberry Pi driver display.</string>
-    <string name="rationale_grant">Grant access</string>
-    <string name="rationale_skip">Not now</string>
-    <string name="parked_only_message">Live property data is hidden while the vehicle is in motion.\n\nShift to Park (P) or apply the parking brake to view.</string>
-    <string name="bridge_channel_name">Pi bridge</string>
-    <string name="bridge_channel_desc">Notifies you that the EX30 Companion is forwarding vehicle telemetry to your Raspberry Pi driver display.</string>
-    <string name="bridge_notification_title">EX30 Companion</string>
-    <string name="bridge_notification_text">Forwarding vehicle telemetry to Pi driver display</string>
+    <string name="app_name">Calm Driver Display</string>
+    <string name="setup_hint">Turn on the display, then find it here to pair over Bluetooth.</string>
+    <string name="find_display">Find display</string>
+    <string name="nearby_required">Allow Nearby devices to find and connect to your display.</string>
+    <string name="bluetooth_off">Turn on Bluetooth to connect to your display.</string>
+    <string name="searching">Looking for your display…</string>
+    <string name="none_found">No display found. Power on the Pi and try again.</string>
+    <string name="search_failed">Bluetooth could not start searching. Try again.</string>
+    <string name="select_display">Select the name shown on the Pi.</string>
+    <string name="confirm_pair">Approve pairing if Android asks.</string>
+    <string name="pairing_cancelled">Pairing did not finish. Find the display to try again.</string>
+    <string name="saved_display">%1$s is paired. It reconnects automatically when in range.</string>
 </resources>

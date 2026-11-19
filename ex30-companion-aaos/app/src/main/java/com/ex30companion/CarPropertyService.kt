@@ -1,209 +1,96 @@
 package com.ex30companion
 
 import android.car.Car
+import android.car.VehiclePropertyIds
 import android.car.hardware.CarPropertyConfig
 import android.car.hardware.CarPropertyValue
 import android.car.hardware.property.CarPropertyManager
 import android.content.Context
 import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
+import android.util.Log
 
-/**
- * Wraps the per-property Car/CarPropertyManager wiring. Owns one Car instance,
- * inspects each entry in [PropertyCatalog], and registers a callback for every
- * property whose config is non-null and whose permission is granted. Results
- * land in [VehicleStateRepository] — this class never reads back from it.
- *
- * Read-only by construction: there is no setProperty path. The verifyReadOnly
- * Gradle task enforces it across the whole module.
- */
+/** Subscriptions and lifecycle callbacks run on the main looper. */
 class CarPropertyService(private val context: Context) {
-
     private var car: Car? = null
     private var manager: CarPropertyManager? = null
-    @Volatile private var parked = false
+    private var callback: CarPropertyManager.CarPropertyEventCallback? = null
+    private var generation = 0
+    private var parked = false
 
     fun start() {
         if (car != null) return
-        VehicleStateRepository.clear()
-        val created = Car.createCar(context.applicationContext)
-        car = created
-        val mgr = created.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
-        manager = mgr ?: return
-        for (entry in PropertyCatalog.entries) {
-            register(mgr, entry)
+        val session = ++generation
+        car = Car.createCar(context, null, Car.CAR_WAIT_TIMEOUT_DO_NOT_WAIT) { connection, ready ->
+            if (session != generation) return@createCar
+            VehicleStateRepository.clear()
+            callback = null
+            manager = if (ready) connection.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager else null
+            val mgr = manager ?: return@createCar
+            val observer = object : CarPropertyManager.CarPropertyEventCallback {
+                override fun onChangeEvent(value: CarPropertyValue<*>) {
+                    if (callback === this && (!parked || value.propertyId in wakeProperties)) publish(value)
+                }
+
+                override fun onErrorEvent(propId: Int, area: Int) {
+                    if (callback === this) VehicleStateRepository.update(propId, null)
+                }
+            }
+            callback = observer
+            for (id in PropertyCatalog.permissions.keys) {
+                if (!parked || id in wakeProperties) subscribe(mgr, observer, id)
+            }
         }
     }
 
-    /**
-     * Parked (driver left): drop every subscription except the ones that can
-     * end parked mode — ignition and the charge port. The 30 Hz power feed
-     * in particular must not keep ticking for a locked, empty car. Unparked:
-     * re-register the full catalog (STATIC entries just re-read once).
-     */
-    fun setParked(nowParked: Boolean) {
-        if (nowParked == parked) return
-        parked = nowParked
+    fun setParked(value: Boolean) {
+        if (parked == value) return
+        parked = value
         val mgr = manager ?: return
-        for (entry in PropertyCatalog.entries) {
-            if (entry.propertyId in KEEP_WHILE_PARKED) continue
-            if (nowParked) {
-                try { mgr.unregisterCallback(callback, entry.propertyId) } catch (_: Throwable) {}
-                VehicleStateRepository.update(entry.propertyId, PropertySample())
-            } else {
-                register(mgr, entry)
-            }
+        val observer = callback ?: return
+        for (id in PropertyCatalog.permissions.keys - wakeProperties) {
+            if (parked) {
+                runCatching { mgr.unregisterCallback(observer, id) }
+                VehicleStateRepository.update(id, null)
+            } else subscribe(mgr, observer, id)
         }
     }
 
     fun stop() {
-        manager?.let { mgr ->
-            try { mgr.unregisterCallback(callback) } catch (_: Throwable) {}
-        }
-        try { car?.disconnect() } catch (_: Throwable) {}
-        car = null
+        generation++
+        callback?.let { runCatching { manager?.unregisterCallback(it) } }
+        callback = null
         manager = null
+        car?.disconnect()
+        car = null
+        VehicleStateRepository.clear()
     }
 
-    private fun register(mgr: CarPropertyManager, entry: PropertyCatalog.Entry) {
-        // Permission check first so we report PERMISSION_DENIED instead of a
-        // generic "not supported" when the user denied a Dangerous prompt.
-        val granted = ContextCompat.checkSelfPermission(context, entry.permission) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            VehicleStateRepository.update(
-                entry.propertyId,
-                PropertySample(
-                    status = PropertyStatus.PERMISSION_DENIED,
-                    timestampMs = System.currentTimeMillis(),
-                    detail = entry.permission,
-                ),
-            )
-            return
-        }
-
-        val config = try {
-            mgr.getCarPropertyConfig(entry.propertyId)
-        } catch (_: Throwable) {
-            null
-        }
-        if (config == null) {
-            VehicleStateRepository.update(
-                entry.propertyId,
-                PropertySample(
-                    status = PropertyStatus.NOT_SUPPORTED,
-                    timestampMs = System.currentTimeMillis(),
-                    detail = "config null on this build",
-                ),
-            )
-            return
-        }
-
-        // STATIC properties (e.g. INFO_EV_BATTERY_CAPACITY) don't fire
-        // callbacks reliably on AAOS — read once at registration and skip
-        // the callback wiring entirely.
-        if (config.changeMode == CarPropertyConfig.VEHICLE_PROPERTY_CHANGE_MODE_STATIC) {
-            try {
-                val v = mgr.getProperty<Any>(entry.propertyId, 0)
-                VehicleStateRepository.update(
-                    entry.propertyId,
-                    PropertySample(
-                        value = v.value,
-                        timestampMs = System.currentTimeMillis(),
-                        status = if (v.status == CarPropertyValue.STATUS_AVAILABLE) PropertyStatus.OK else PropertyStatus.ERROR,
-                    ),
-                )
-            } catch (t: Throwable) {
-                VehicleStateRepository.update(
-                    entry.propertyId,
-                    PropertySample(
-                        status = PropertyStatus.ERROR,
-                        timestampMs = System.currentTimeMillis(),
-                        detail = t.javaClass.simpleName + ": " + t.message,
-                    ),
-                )
+    private fun subscribe(mgr: CarPropertyManager, observer: CarPropertyManager.CarPropertyEventCallback, id: Int) {
+        if (context.checkSelfPermission(PropertyCatalog.permissions.getValue(id)) != PackageManager.PERMISSION_GRANTED) return
+        try {
+            val config = mgr.getCarPropertyConfig(id) ?: return
+            when (config.changeMode) {
+                CarPropertyConfig.VEHICLE_PROPERTY_CHANGE_MODE_STATIC -> publish(mgr.getProperty<Any>(id, 0))
+                CarPropertyConfig.VEHICLE_PROPERTY_CHANGE_MODE_CONTINUOUS -> {
+                    val hz = when (id) {
+                        VehiclePropertyIds.PERF_VEHICLE_SPEED_DISPLAY -> 10f
+                        VehiclePropertyIds.EV_BATTERY_INSTANTANEOUS_CHARGE_RATE -> 20f
+                        else -> 1f
+                    }.coerceIn(config.minSampleRate, config.maxSampleRate)
+                    mgr.registerCallback(observer, id, hz)
+                }
+                else -> mgr.registerCallback(observer, id, CarPropertyManager.SENSOR_RATE_ONCHANGE)
             }
-            return
-        }
-
-        val rate = when (config.changeMode) {
-            CarPropertyConfig.VEHICLE_PROPERTY_CHANGE_MODE_CONTINUOUS -> {
-                val cap = CONTINUOUS_RATE_CAP_HZ[entry.propertyId] ?: DEFAULT_CONTINUOUS_RATE_HZ
-                config.maxSampleRate
-                    .coerceAtMost(cap)
-                    .coerceAtLeast(config.minSampleRate)
-            }
-            else -> CarPropertyManager.SENSOR_RATE_ONCHANGE
-        }
-        val ok = try {
-            mgr.registerCallback(callback, entry.propertyId, rate)
-        } catch (t: Throwable) {
-            VehicleStateRepository.update(
-                entry.propertyId,
-                PropertySample(
-                    status = PropertyStatus.ERROR,
-                    timestampMs = System.currentTimeMillis(),
-                    detail = t.javaClass.simpleName + ": " + t.message,
-                ),
-            )
-            return
-        }
-        if (!ok) {
-            VehicleStateRepository.update(
-                entry.propertyId,
-                PropertySample(
-                    status = PropertyStatus.ERROR,
-                    timestampMs = System.currentTimeMillis(),
-                    detail = "registerCallback returned false",
-                ),
-            )
+        } catch (failure: RuntimeException) {
+            Log.d("CalmDisplay", "Property 0x${id.toString(16)} unavailable", failure)
+            VehicleStateRepository.update(id, null)
         }
     }
 
-    private val callback = object : CarPropertyManager.CarPropertyEventCallback {
-        override fun onChangeEvent(value: CarPropertyValue<*>) {
-            VehicleStateRepository.update(
-                value.propertyId,
-                PropertySample(
-                    value = value.value,
-                    timestampMs = System.currentTimeMillis(),
-                    status = if (value.status == CarPropertyValue.STATUS_AVAILABLE) PropertyStatus.OK else PropertyStatus.ERROR,
-                ),
-            )
-        }
-
-        override fun onErrorEvent(propId: Int, zone: Int) {
-            VehicleStateRepository.update(
-                propId,
-                PropertySample(
-                    status = PropertyStatus.ERROR,
-                    timestampMs = System.currentTimeMillis(),
-                    detail = "VHAL error event (zone=$zone)",
-                ),
-            )
-        }
+    private fun publish(value: CarPropertyValue<*>) {
+        VehicleStateRepository.update(value.propertyId,
+            if (value.status == CarPropertyValue.STATUS_AVAILABLE) value.value else null)
     }
 
-    companion object {
-        // Subscriptions that survive parked mode: the exit conditions.
-        private val KEEP_WHILE_PARKED = setOf(
-            android.car.VehiclePropertyIds.IGNITION_STATE,
-            android.car.VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED,
-        )
-
-        // Per-property cap for CONTINUOUS properties. The VHAL reports
-        // maxSampleRate values far higher than the bridge needs — cap each
-        // property to the rate the Pi UI can actually consume.
-        private const val DEFAULT_CONTINUOUS_RATE_HZ = 1f
-        private val CONTINUOUS_RATE_CAP_HZ = mapOf(
-            android.car.VehiclePropertyIds.PERF_VEHICLE_SPEED to 10f,
-            android.car.VehiclePropertyIds.PERF_VEHICLE_SPEED_DISPLAY to 10f,
-            // 30Hz so the power/regen gauges move smoothly with pedal input;
-            // pair with the 33ms coalescer tick in BridgeClient.
-            android.car.VehiclePropertyIds.EV_BATTERY_INSTANTANEOUS_CHARGE_RATE to 30f,
-            android.car.VehiclePropertyIds.EV_BATTERY_LEVEL to 0.5f,
-            android.car.VehiclePropertyIds.RANGE_REMAINING to 0.5f,
-            android.car.VehiclePropertyIds.ENV_OUTSIDE_TEMPERATURE to 0.5f,
-        )
-    }
+    private val wakeProperties = setOf(VehiclePropertyIds.IGNITION_STATE, VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED)
 }

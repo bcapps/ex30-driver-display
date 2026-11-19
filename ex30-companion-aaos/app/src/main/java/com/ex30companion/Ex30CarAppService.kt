@@ -45,8 +45,8 @@ private class Ex30Screen(carContext: CarContext) : Screen(carContext) {
         val pane = Pane.Builder()
             .addRow(
                 Row.Builder()
-                    .setTitle("EX30 Companion")
-                    .addText("Open EX30 Companion from the home screen for the driver display.")
+                    .setTitle("Calm Driver Display")
+                    .addText("Open Calm Driver Display while parked to pair your display.")
                     .build()
             )
             .build()
