@@ -18,22 +18,26 @@ import java.io.ByteArrayOutputStream
 object DisplayLettering {
     private const val CELL = 320
     private val labels = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "P", "R", "N", "D", "km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
-    private val faces = listOf("VolvoNovum-Regular" to "sans-serif", "VolvoNovum-Medium" to "sans-serif-medium")
+    private fun installed(name: String, fallback: String): Typeface {
+        val face = Typeface.create("VolvoNovum-$name", Typeface.NORMAL)
+        return if (face == Typeface.DEFAULT) Typeface.create(fallback, Typeface.NORMAL) else face
+    }
 
     fun frame(): String {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             color = Color.WHITE
         }
         // Six cells per row leave room for complete unit labels like km/h.
+        val faces = listOf(installed("Regular", "sans-serif"), installed("Medium", "sans-serif-medium"))
+        val inactiveGear = installed("SemiLight", "sans-serif-light")
         val widths = JSONArray()
         val bitmap = Bitmap.createBitmap(CELL * 6, 192 * 4 * faces.size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        for ((row, pair) in faces.withIndex()) {
-            val face = Typeface.create(pair.first, Typeface.NORMAL)
-            paint.typeface = if (face == Typeface.DEFAULT) Typeface.create(pair.second, Typeface.NORMAL) else face
+        for ((row, face) in faces.withIndex()) {
             val advances = JSONArray()
             for ((i, label) in labels.withIndex()) {
                 // Large speed numerals reach the panel at native resolution.
+                paint.typeface = if (row == 0 && label.length == 1 && label[0] in "PRND") inactiveGear else face
                 val digit = i < 10
                 paint.textSize = if (digit) 216f else 128f
                 val baseline = if (digit) 174 else 150

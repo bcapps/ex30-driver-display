@@ -8,8 +8,8 @@ import cairo
 
 WIDTH, HEIGHT = 1920, 448
 # Sampled from Volvo's light and dark EX30 Calm reference images.
-DAY = ("#f0f0f0", "#444444", "#737373", "#a8a8a8", "#c52631", "#22764c")
-NIGHT = ("#2f3744", "#ffffff", "#c2c8ce", "#717986", "#ff545b", "#69d99b")
+DAY = ("#f0f0f0", "#444444", "#969696", "#d6d6d6", "#c52631", "#22764c")
+NIGHT = ("#2f3744", "#ffffff", "#99a5b3", "#717986", "#ff545b", "#69d99b")
 LABELS = tuple("0123456789PRND") + ("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
 
 

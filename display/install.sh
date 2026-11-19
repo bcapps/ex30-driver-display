@@ -15,13 +15,8 @@ if ! id ex30-display >/dev/null 2>&1
 then
     adduser --system --group --no-create-home ex30-display
 fi
-seat_group=$(stat -c %G /run/seatd.sock)
-groups=video,render,bluetooth
-if [ "$seat_group" != root ]
-then
-    groups="$groups,$seat_group"
-fi
-usermod -aG "$groups" ex30-display
+# Raspberry Pi OS seatd grants socket access to the video group.
+usermod -aG video,render,bluetooth ex30-display
 install -d /opt/ex30-display
 install -m 644 app.py bluez.py cluster.py stream.py /opt/ex30-display/
 install -m 644 ex30-display.service /etc/systemd/system/

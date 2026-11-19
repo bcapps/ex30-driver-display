@@ -171,8 +171,10 @@ class Receiver(dbus.service.Object):
     def tick(self):
         if self.link and time.monotonic() >= self.stream.deadline:
             self.disconnect()
-        elif not self.owner and not self.stream.live:
-            self.redraw()
+        elif self.open_until and time.monotonic() >= self.open_until:
+            self.open_until = 0
+            if not self.owner:
+                self.redraw()
         return True
 
     @dbus.service.method(PROFILE, in_signature="", out_signature="", sender_keyword="sender")
