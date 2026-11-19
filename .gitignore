@@ -31,3 +31,6 @@ captures/
 .DS_Store
 Thumbs.db
 .claude/
+
+# Python renderer
+__pycache__/
