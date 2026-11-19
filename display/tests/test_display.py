@@ -84,9 +84,9 @@ class InstrumentTests(unittest.TestCase):
                         return [y for y in range(top, bottom) if any(
                             abs((pixels[y * 1920 + x] & 255) - bg) > 30 for x in range(left, right))]
 
-                    self.assertAlmostEqual(len(ink_rows(416, 450, 145, 215)), 45, delta=1)
-                    digit = ink_rows(485, 509)
-                    sign = ink_rows(510, 550)
+                    self.assertAlmostEqual(len(ink_rows(192, 226, 145, 215)), 45, delta=1)
+                    digit = ink_rows(261, 285)
+                    sign = ink_rows(286, 326)
                     self.assertAlmostEqual(len(digit), 28, delta=1)
                     self.assertAlmostEqual(len(sign) / len(digit), 0.72, delta=0.06)
                     self.assertAlmostEqual(digit[-1], sign[-1], delta=1)

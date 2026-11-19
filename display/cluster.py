@@ -210,7 +210,7 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     else:
         paint_text(ctx, "–", 954, 291, 210, ink, lettering, align=0.5)
 
-    reading_x = 416
+    reading_x = 192
     reading_ink = ink if dark else "#686868"
     distance = number(fields, "range_m_aaos")
     unit = fields.get("distance_unit", "km")
