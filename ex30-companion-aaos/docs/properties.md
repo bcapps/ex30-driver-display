@@ -1,49 +1,18 @@
-# Property Catalog 
+# Vehicle signals
 
-**Reference**: https://developer.android.com/reference/android/car/VehiclePropertyIds
+Only supported, permitted, available values enter a snapshot. The app uses the public Android Automotive property manager in the signed-in car user’s process. The upstream project recorded the core driving and energy properties on a retail EX30. The display-unit preferences and usable capacity were also exercised on Google’s Android 15 Automotive image. [Android property reference](https://developer.android.com/reference/android/car/VehiclePropertyIds) · [Upstream EX30 property inventory](https://github.com/ifmeidan/ex-30-driver-display/blob/be10605dd7d427c99effbb98255ca3e31bac33aa/ex30-companion-aaos/docs/properties.md)
 
-The AAOS app reads every Keep row marked `keep-confirmed` and forwards values
-over the bridge. Whether the Pi UI uses an AAOS-sourced field or its OBD2
-equivalent is a Pi-side decision in `ex30-companion-runner/`, not an AAOS-side one.
+| Android property | How the display uses it |
+| --- | --- |
+| `PERF_VEHICLE_SPEED_DISPLAY` | Calibrated displayed speed in metres per second. The Pi converts to the selected unit, uses the magnitude in reverse and rounds to a whole number. |
+| `VEHICLE_SPEED_DISPLAY_UNITS`, `DISTANCE_DISPLAY_UNITS` | Independent speed and distance preferences. If absent, US and GB Android locales default to mph and miles, other locales to km/h and kilometres. |
+| `RANGE_REMAINING` | Car-estimated remaining distance in metres. A mile is 1,609.344 m. |
+| `EV_BATTERY_LEVEL` | Remaining energy in Wh. Divide by `EV_CURRENT_BATTERY_CAPACITY` or, when unavailable, `INFO_EV_BATTERY_CAPACITY`. The factory’s displayed percentage can differ from this estimate. |
+| `GEAR_SELECTION`, `PARKING_BRAKE_ON` | Highlight the selected gear and show the steady engaged parking brake independently. |
+| `EV_BATTERY_INSTANTANEOUS_CHARGE_RATE` | Upstream observed the EX30 reports the opposite sign to Android’s specification. The app preserves its EX30 sign correction. The Pi gauge spans 200 kW draw and 100 kW regeneration. Those are drawing scales. Volvo’s exact available power, regen limits and friction braking require separate inputs. |
+| `EV_CHARGE_PORT_CONNECTED`, `IGNITION_STATE` | Plug indicator and decisions about leaving or resuming the connection. |
+| `NIGHT_MODE` | Cabin-light fallback when Android’s current UI mode is undefined. The service gives an explicit day/night UI configuration precedence. |
 
-## Keep — Normal tier (auto-granted at install)
+There is no verified ordinary-app feed for the EX30’s recognized road-sign speed limit, the automatic rain-sensor indicator or the factory position-lamp status. The Pi leaves these off the display. The rendered parking-brake symbol reports engagement. A flashing fault indication would need its own source.
 
-CURRENT_GEAR                    | Car.PERMISSION_POWERTRAIN            | keep-confirmed
-ENV_OUTSIDE_TEMPERATURE         | Car.PERMISSION_EXTERIOR_ENVIRONMENT  | keep-confirmed
-INFO_EV_BATTERY_CAPACITY        | Car.PERMISSION_CAR_INFO              | keep-confirmed
-EV_CHARGE_PORT_CONNECTED        | Car.PERMISSION_ENERGY_PORTS          | keep-confirmed
-GEAR_SELECTION                  | Car.PERMISSION_POWERTRAIN            | keep-confirmed
-IGNITION_STATE                  | Car.PERMISSION_POWERTRAIN            | keep-confirmed
-NIGHT_MODE                      | Car.PERMISSION_EXTERIOR_ENVIRONMENT  | keep-confirmed
-PARKING_BRAKE_ON                | Car.PERMISSION_POWERTRAIN            | keep-confirmed
-
-## Keep — Dangerous tier (runtime prompt)
-
-EV_BATTERY_INSTANTANEOUS_CHARGE_RATE     | Car.PERMISSION_ENERGY                  | keep-confirmed
-EV_BATTERY_LEVEL                         | Car.PERMISSION_ENERGY                  | keep-confirmed
-PERF_VEHICLE_SPEED                       | Car.PERMISSION_SPEED                   | keep-confirmed
-PERF_VEHICLE_SPEED_DISPLAY               | Car.PERMISSION_SPEED                   | keep-confirmed
-RANGE_REMAINING                          | Car.PERMISSION_ENERGY                  | keep-confirmed
-
-## Optional display properties
-
-The fork also requests `VEHICLE_SPEED_DISPLAY_UNITS` and `DISTANCE_DISPLAY_UNITS` with `READ_CAR_DISPLAY_UNITS`. They are independent preferences. `EV_CURRENT_BATTERY_CAPACITY` provides usable capacity on builds that publish it. All three returned values on Google's Android 15 Automotive reference image. Retail availability depends on the car.
-
-## CONTINUOUS sample-rate caps
-
-VHAL `maxSampleRate` is far higher than the bridge needs (SoC reports 100 Hz).
-Caps applied client-side in `CarPropertyService.kt#CONTINUOUS_RATE_CAP_HZ`:
-
-| Property | Cap (Hz) | Reasoning |
-|---|---|---|
-| `PERF_VEHICLE_SPEED` | 10 | smooth speedo on Pi UI |
-| `PERF_VEHICLE_SPEED_DISPLAY` | 10 | same |
-| `EV_BATTERY_INSTANTANEOUS_CHARGE_RATE` | 30 | throttle/regen power source — 30 Hz so the Pi's power gauge moves smoothly with pedal input; paired with the 33 ms coalescer tick in `BridgeClient` |
-| `EV_BATTERY_LEVEL` | 0.5 | SoC moves on the order of minutes |
-| `RANGE_REMAINING` | 0.5 | recomputed slowly |
-| `ENV_OUTSIDE_TEMPERATURE` | 0.5 | sensor noise dominates above this |
-
-Combined steady-state event rate ≈ 51.5/s, and the 33 ms coalescer batches
-them into at most ~30 frames/s on the wire. At well under 1 KB per frame
-that's a few tens of KB/s worst case — trivial for the WiFi TCP link (and
-still within BT SPP throughput if the serial fallback ever ships).
+Display speed is requested at up to 10 Hz, power at 20 Hz, and other continuous properties at 1 Hz, within the rate bounds advertised by the vehicle. Other properties are read once or observed on change.
