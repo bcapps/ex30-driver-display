@@ -64,6 +64,7 @@ android {
     }
 
     useLibrary("android.car")
+    sourceSets["main"].assets.directories.add("../../ex30-companion-runner/ui/modern/fonts")
 }
 
 kotlin {

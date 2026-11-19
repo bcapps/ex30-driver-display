@@ -21,7 +21,7 @@ import java.util.UUID
 @SuppressLint("MissingPermission") // BridgeService checks BLUETOOTH_CONNECT before starting.
 class BridgeClient(private val context: Context, private val adapter: BluetoothAdapter) {
     private val scope = CoroutineScope(Dispatchers.IO)
-    private val lettering by lazy { DisplayLettering.frame() }
+    private val lettering by lazy { DisplayLettering.frame(context.assets) }
     private var target: String? = null
     private var job: Job? = null
     private var socket: BluetoothSocket? = null

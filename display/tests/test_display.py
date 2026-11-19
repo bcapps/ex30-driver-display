@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import unittest
 from unittest.mock import patch
@@ -18,6 +20,37 @@ def labels(fields):
 
 
 class InstrumentTests(unittest.TestCase):
+    def test_speed_ink_on_wide_and_tall_screens(self):
+        atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1536)
+        ctx = cairo.Context(atlas)
+        ctx.rectangle(12, 22, 94, 153)
+        ctx.rectangle(10, 768 + 24, 113, 154)
+        ctx.fill()
+        png = io.BytesIO()
+        atlas.write_to_png(png)
+        frame = {"version": 1, "labels": cluster.LABELS, "png": base64.b64encode(png.getvalue()),
+                 "advances": [[130] * len(cluster.LABELS)] * 2}
+        legacy = cluster.Lettering(frame)
+        current = cluster.Lettering(dict(frame, speedRow=1))
+        self.assertEqual(legacy.zero_ink, (94, 153, 1))
+        self.assertEqual(current.zero_ink, (113, 154, 4))
+        for lettering in (None, legacy, current):
+            for width, height in ((1920, 480), (1920, 448), (1280, 720)):
+                with self.subTest(lettering=lettering, size=(width, height)):
+                    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
+                    cluster.draw(cairo.Context(surface), width, height, {"speed_display_aaos": 0}, lettering)
+                    surface.flush()
+                    pixels = memoryview(surface.get_data()).cast("I")
+                    face_height = min(height, width / 4)
+                    center = height / 2
+                    ink = [(x, y) for y in range(int(center - face_height / 4), int(center + face_height / 6))
+                           for x in range(width * 2 // 5, width * 3 // 5) if pixels[y * width + x] & 255 < 154]
+                    xs, ys = zip(*ink)
+                    ink_height = max(ys) - min(ys) + 1
+                    self.assertAlmostEqual(ink_height, 0.34 * face_height, delta=2)
+                    self.assertAlmostEqual(max(xs) - min(xs) + 1, 0.756 * ink_height, delta=2)
+                    self.assertAlmostEqual(max(ys) + 1, center + 0.148 * face_height, delta=2)
+
     def test_independent_units_and_reverse_speed(self):
         self.assertEqual(labels({"speed_display_aaos": -26.8224, "speed_unit": "mph",
                                  "range_m_aaos": 160934.4, "distance_unit": "km"}),

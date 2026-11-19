@@ -42,6 +42,27 @@ class Lettering:
             raise ValueError("Invalid label widths")
         self.surface = cairo.ImageSurface.create_from_png(io.BytesIO(png))
         self.widths = widths
+        self.speed_row = frame.get("speedRow", 0)
+        if type(self.speed_row) is not int or self.speed_row not in (0, 1):
+            raise ValueError("Invalid speed lettering row")
+        self.zero_ink = self.measure_zero()
+
+    def measure_zero(self):
+        # Measure visible ink once. The car's fallback font can have different proportions.
+        tile = cairo.ImageSurface(cairo.FORMAT_A8, 320, 192)
+        ctx = cairo.Context(tile)
+        ctx.set_source_surface(self.surface, 0, -self.speed_row * 768)
+        ctx.paint()
+        tile.flush()
+        mask = bytes(tile.get_data()).translate(bytes(128) + b"\xff" * 128)
+        rows = [mask[y:y + 320] for y in range(0, len(mask), tile.get_stride())]
+        ink = [(y, row.find(b"\xff"), row.rfind(b"\xff")) for y, row in enumerate(rows) if b"\xff" in row]
+        if not ink:
+            raise ValueError("Missing speed zero")
+        left = min(left for _, left, _ in ink)
+        right = max(right for _, _, right in ink) + 1
+        bottom = ink[-1][0] + 1
+        return right - left, bottom - ink[0][0], bottom - 174
 
     def draw(self, ctx, text, x, y, size, weight, align):
         indices = [LABELS.index(label) for label in ([text] if text in LABELS else text)]
@@ -75,6 +96,26 @@ def paint_text(ctx, text, x, y, size, color, lettering=None, weight=0, align=0):
     ctx.move_to(x - width * align, y)
     ctx.show_text(text)
     return width
+
+
+def paint_speed(ctx, text, face_height, ink, lettering):
+    ctx.save()
+    if lettering is None:
+        ctx.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        ctx.set_font_size(216)
+        _, top, width, height, _, _ = ctx.text_extents("0")
+        descent = top + height
+        row = 0
+    else:
+        width, height, descent = lettering.zero_ink
+        row = lettering.speed_row
+    # The photographed EX90 zero is 0.76 as wide as it is tall.
+    # Its ink spans 34% of the lit panel and ends 65% of the way down.
+    ink_height = 0.34 * face_height
+    ctx.translate(954, HEIGHT / 2 + 0.148 * face_height)
+    ctx.scale(0.756 * ink_height / width, ink_height / height)
+    paint_text(ctx, text, 0, -descent, 216, ink, lettering, weight=row, align=0.5)
+    ctx.restore()
 
 
 def battery(ctx, x, y, percent, ink):
@@ -139,8 +180,10 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     bg, ink, secondary, track, brake, regen = NIGHT if dark else DAY
     set_color(ctx, bg)
     ctx.paint()
-    ctx.save()
     scale = min(width / WIDTH, height / HEIGHT)
+    if scale <= 0:
+        return
+    ctx.save()
     ctx.translate((width - WIDTH * scale) / 2, (height - HEIGHT * scale) / 2)
     ctx.scale(scale, scale)
 
@@ -148,9 +191,12 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     unit = fields.get("speed_unit", "km/h")
     factor = {"mph": 3600 / 1609.344, "km/h": 3.6, "m/s": 1}.get(unit)
     available = speed is not None and factor is not None
-    paint_text(ctx, whole(abs(speed) * factor) if available else "–", 954, 291, 210, ink, lettering, align=0.5)
     if available:
+        # Keep the wide instrument face centred on taller monitors.
+        paint_speed(ctx, whole(abs(speed) * factor), min(height / scale, WIDTH / 4), ink, lettering)
         paint_text(ctx, unit, 954, 351, 37, ink, lettering, align=0.5)
+    else:
+        paint_text(ctx, "–", 954, 291, 210, ink, lettering, align=0.5)
 
     distance = number(fields, "range_m_aaos")
     unit = fields.get("distance_unit", "km")
