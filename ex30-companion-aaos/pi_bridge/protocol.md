@@ -14,4 +14,6 @@ Each subsequent frame has type `state` and a complete `fields` object. This samp
 
 Missing fields clear the previous value. Numeric fields carry m/s, metres, Wh or mW as described in the property table. The selected gear is a letter. Switches are booleans. A positive normalized power value means charging or regeneration. [Field sources](../docs/properties.md) · [Android wire mapping](../app/src/main/java/com/ex30companion/WireFieldMapper.kt)
 
+Charging-capable senders also supply `charging_active` when the car reports a known charge state, `charge_target_pct` for the selected limit, and `charge_seconds_remaining` for its estimate. Each is optional. The lettering frame can include `chargingAdvances` for `Charging`, `Done in`, `h`, `min`, `kW`, and the decimal point in that order. They occupy 320 × 96 px tiles in the last two columns of the bottom row of each block, left to right then top to bottom, at a 72 px em and a 74 px baseline. Earlier receivers ignore these cells. New receivers use local text for charging words missing from older senders.
+
 Android sends changed readings up to 20 times a second and a current snapshot at least once per second while connected. The Pi allows 15 seconds for initial lettering and state, then clears its instruments after three seconds without a valid snapshot. Each reconnect starts with fresh lettering and a full state.

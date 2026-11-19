@@ -92,5 +92,6 @@ class CarPropertyService(private val context: Context) {
             if (value.status == CarPropertyValue.STATUS_AVAILABLE) value.value else null)
     }
 
-    private val wakeProperties = setOf(VehiclePropertyIds.IGNITION_STATE, VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED)
+    private val wakeProperties = setOf(VehiclePropertyIds.IGNITION_STATE, VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED,
+        VehiclePropertyIds.EV_CHARGE_STATE)
 }

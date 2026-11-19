@@ -1,6 +1,7 @@
 package com.ex30companion
 
 import android.car.VehiclePropertyIds
+import android.car.hardware.property.EvChargeState
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -35,8 +36,9 @@ class ParkedModeMonitor(private val context: Context, scope: CoroutineScope) {
 
     private fun update(values: Map<Int, Any>) {
         val ignition = values[VehiclePropertyIds.IGNITION_STATE] as? Int
-        val plugged = values[VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED] == true
-        parked.value = !plugged && (!screenOn || ignition in 1..3)
+        val connected = values[VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED] as? Boolean
+            ?: (values[VehiclePropertyIds.EV_CHARGE_STATE] == EvChargeState.STATE_CHARGING)
+        parked.value = !connected && (!screenOn || ignition in 1..3)
     }
 
     fun release() = context.unregisterReceiver(screen)

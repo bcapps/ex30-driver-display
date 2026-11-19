@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream
 object DisplayLettering {
     private const val CELL = 320
     private val labels = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "P", "R", "N", "D", "km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
+    private val chargingLabels = listOf("Charging", "Done in", "h", "min", "kW", ".")
     private fun novum(weight: String) =
         Typeface.create("VolvoNovum-$weight", Typeface.NORMAL).takeUnless { it == Typeface.DEFAULT }
 
@@ -62,13 +63,24 @@ object DisplayLettering {
             }
             widths.put(advances)
         }
+        // The last two cells of each block are unused by the driving display.
+        val chargingWidths = JSONArray()
+        paint.textSize = 72f
+        paint.fontFeatureSettings = null
+        for ((i, label) in chargingLabels.withIndex()) {
+            paint.typeface = if (i == 0) speedFace else readingFace
+            val x = (4 + i % 2) * CELL + 4
+            val y = i / 4 * 768 + 576 + i / 2 % 2 * 96 + 74
+            canvas.drawText(label, x.toFloat(), y.toFloat(), paint)
+            chargingWidths.put(paint.measureText(label).toDouble())
+        }
         val png = ByteArrayOutputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             it.toByteArray()
         }
         bitmap.recycle()
         return JSONObject().put("type", "lettering").put("version", 1).put("speedRow", 1)
-            .put("labels", JSONArray(labels)).put("advances", widths)
+            .put("labels", JSONArray(labels)).put("advances", widths).put("chargingAdvances", chargingWidths)
             .put("png", Base64.encodeToString(png, Base64.NO_WRAP)).toString()
     }
 }

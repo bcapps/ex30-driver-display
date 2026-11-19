@@ -2,6 +2,7 @@ package com.ex30companion
 
 import android.car.VehiclePropertyIds
 import android.car.VehicleUnit
+import android.car.hardware.property.EvChargeState
 
 /** Convert vehicle property values into portable display units and field names. */
 object WireFieldMapper {
@@ -46,6 +47,14 @@ object WireFieldMapper {
                 Wire("parking_brake", raw as Boolean)
             VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED ->
                 Wire("charge_port_connected", raw as Boolean)
+            VehiclePropertyIds.EV_CHARGE_STATE -> when (raw) {
+                EvChargeState.STATE_CHARGING -> Wire("charging_active", true)
+                EvChargeState.STATE_NOT_CHARGING, EvChargeState.STATE_FULLY_CHARGED,
+                EvChargeState.STATE_ERROR -> Wire("charging_active", false)
+                else -> null
+            }
+            VehiclePropertyIds.EV_CHARGE_PERCENT_LIMIT -> Wire("charge_target_pct", (raw as Number).toFloat())
+            VehiclePropertyIds.EV_CHARGE_TIME_REMAINING -> Wire("charge_seconds_remaining", (raw as Number).toInt())
             VehiclePropertyIds.NIGHT_MODE ->
                 Wire("night_mode", raw as Boolean)
             VehiclePropertyIds.INFO_EV_BATTERY_CAPACITY ->
