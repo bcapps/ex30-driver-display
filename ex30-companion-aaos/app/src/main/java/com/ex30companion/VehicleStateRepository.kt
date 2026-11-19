@@ -27,6 +27,10 @@ object VehicleStateRepository {
     )
     val state: StateFlow<Map<Int, PropertySample>> = _state.asStateFlow()
 
+    fun clear() {
+        _state.value = emptyMap()
+    }
+
     fun update(propertyId: Int, sample: PropertySample) {
         _state.update { it + (propertyId to sample) }
     }

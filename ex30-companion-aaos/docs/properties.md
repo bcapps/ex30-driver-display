@@ -25,6 +25,10 @@ PERF_VEHICLE_SPEED                       | Car.PERMISSION_SPEED                 
 PERF_VEHICLE_SPEED_DISPLAY               | Car.PERMISSION_SPEED                   | keep-confirmed
 RANGE_REMAINING                          | Car.PERMISSION_ENERGY                  | keep-confirmed
 
+## Optional display properties
+
+The fork also requests `VEHICLE_SPEED_DISPLAY_UNITS` and `DISTANCE_DISPLAY_UNITS` with `READ_CAR_DISPLAY_UNITS`. They are independent preferences. `EV_CURRENT_BATTERY_CAPACITY` provides usable capacity on builds that publish it. All three returned values on Google's Android 15 Automotive reference image. Retail availability depends on the car.
+
 ## CONTINUOUS sample-rate caps
 
 VHAL `maxSampleRate` is far higher than the bridge needs (SoC reports 100 Hz).

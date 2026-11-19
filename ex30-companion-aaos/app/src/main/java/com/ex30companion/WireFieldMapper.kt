@@ -1,6 +1,7 @@
 package com.ex30companion
 
 import android.car.VehiclePropertyIds
+import android.car.VehicleUnit
 
 /**
  * Translates raw [PropertySample] values into the wire schema documented in
@@ -17,6 +18,20 @@ object WireFieldMapper {
     fun map(propertyId: Int, raw: Any?): Wire? {
         if (raw == null) return null
         return when (propertyId) {
+            VehiclePropertyIds.VEHICLE_SPEED_DISPLAY_UNITS -> when ((raw as Number).toInt()) {
+                VehicleUnit.MILES_PER_HOUR -> Wire("speed_unit", "mph")
+                VehicleUnit.KILOMETERS_PER_HOUR -> Wire("speed_unit", "km/h")
+                VehicleUnit.METER_PER_SEC -> Wire("speed_unit", "m/s")
+                else -> null
+            }
+            VehiclePropertyIds.DISTANCE_DISPLAY_UNITS -> when ((raw as Number).toInt()) {
+                VehicleUnit.MILE -> Wire("distance_unit", "mi")
+                VehicleUnit.KILOMETER -> Wire("distance_unit", "km")
+                VehicleUnit.METER -> Wire("distance_unit", "m")
+                else -> null
+            }
+            VehiclePropertyIds.EV_CURRENT_BATTERY_CAPACITY ->
+                Wire("usable_capacity_wh", (raw as Number).toFloat())
             VehiclePropertyIds.PERF_VEHICLE_SPEED ->
                 Wire("speed_aaos", (raw as Number).toFloat())
             VehiclePropertyIds.PERF_VEHICLE_SPEED_DISPLAY ->

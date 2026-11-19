@@ -25,6 +25,7 @@ class CarPropertyService(private val context: Context) {
 
     fun start() {
         if (car != null) return
+        VehicleStateRepository.clear()
         val created = Car.createCar(context.applicationContext)
         car = created
         val mgr = created.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
@@ -48,6 +49,7 @@ class CarPropertyService(private val context: Context) {
             if (entry.propertyId in KEEP_WHILE_PARKED) continue
             if (nowParked) {
                 try { mgr.unregisterCallback(callback, entry.propertyId) } catch (_: Throwable) {}
+                VehicleStateRepository.update(entry.propertyId, PropertySample())
             } else {
                 register(mgr, entry)
             }
@@ -108,7 +110,7 @@ class CarPropertyService(private val context: Context) {
                     PropertySample(
                         value = v.value,
                         timestampMs = System.currentTimeMillis(),
-                        status = PropertyStatus.OK,
+                        status = if (v.status == CarPropertyValue.STATUS_AVAILABLE) PropertyStatus.OK else PropertyStatus.ERROR,
                     ),
                 )
             } catch (t: Throwable) {
@@ -165,7 +167,7 @@ class CarPropertyService(private val context: Context) {
                 PropertySample(
                     value = value.value,
                     timestampMs = System.currentTimeMillis(),
-                    status = PropertyStatus.OK,
+                    status = if (value.status == CarPropertyValue.STATUS_AVAILABLE) PropertyStatus.OK else PropertyStatus.ERROR,
                 ),
             )
         }

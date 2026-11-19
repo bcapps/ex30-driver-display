@@ -21,6 +21,10 @@ object PropertyCatalog {
     )
 
     val entries: List<Entry> = listOf(
+        // Display preferences and usable capacity are optional on older cars.
+        n(VehiclePropertyIds.VEHICLE_SPEED_DISPLAY_UNITS, "VEHICLE_SPEED_DISPLAY_UNITS", Car.PERMISSION_READ_DISPLAY_UNITS),
+        n(VehiclePropertyIds.DISTANCE_DISPLAY_UNITS, "DISTANCE_DISPLAY_UNITS", Car.PERMISSION_READ_DISPLAY_UNITS),
+        d(VehiclePropertyIds.EV_CURRENT_BATTERY_CAPACITY, "EV_CURRENT_BATTERY_CAPACITY", Car.PERMISSION_ENERGY),
         // --- Normal tier --------------------------------------------------
         n(VehiclePropertyIds.CURRENT_GEAR, "CURRENT_GEAR", Car.PERMISSION_POWERTRAIN),
         n(VehiclePropertyIds.ENV_OUTSIDE_TEMPERATURE, "ENV_OUTSIDE_TEMPERATURE", Car.PERMISSION_EXTERIOR_ENVIRONMENT),

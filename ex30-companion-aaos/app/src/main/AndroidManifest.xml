@@ -15,6 +15,7 @@
         android:required="true" />
 
     <!-- Vehicle property reads — Normal tier (auto-granted at install). -->
+    <uses-permission android:name="android.car.permission.READ_CAR_DISPLAY_UNITS" />
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
     <uses-permission android:name="android.car.permission.CAR_EXTERIOR_ENVIRONMENT" />
     <uses-permission android:name="android.car.permission.CAR_ENERGY_PORTS" />
