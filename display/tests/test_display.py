@@ -19,19 +19,25 @@ def labels(fields):
     return [call.args[1] for call in text.call_args_list]
 
 
+def lettering_frame(sign_height=91, sign_descent=2):
+    atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1536)
+    ctx = cairo.Context(atlas)
+    ctx.rectangle(12, 22, 94, 153)
+    ctx.rectangle(10, 768 + 24, 113, 154)
+    i = cluster.LABELS.index("%")
+    ctx.rectangle(i % 6 * 320 + 8, i // 6 * 192 + 150 + sign_descent - sign_height, 96, sign_height)
+    ctx.fill()
+    png = io.BytesIO()
+    atlas.write_to_png(png)
+    widths = [[130] * len(cluster.LABELS) for _ in range(2)]
+    widths[1][cluster.LABELS.index("km/h")] = 318  # Novum Medium in older car apps
+    return {"version": 1, "labels": cluster.LABELS, "png": base64.b64encode(png.getvalue()),
+            "advances": widths}
+
+
 class InstrumentTests(unittest.TestCase):
     def test_speed_ink_on_wide_and_tall_screens(self):
-        atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1536)
-        ctx = cairo.Context(atlas)
-        ctx.rectangle(12, 22, 94, 153)
-        ctx.rectangle(10, 768 + 24, 113, 154)
-        ctx.fill()
-        png = io.BytesIO()
-        atlas.write_to_png(png)
-        widths = [[130] * len(cluster.LABELS) for _ in range(2)]
-        widths[1][cluster.LABELS.index("km/h")] = 318  # Novum Medium in older car apps
-        frame = {"version": 1, "labels": cluster.LABELS, "png": base64.b64encode(png.getvalue()),
-                 "advances": widths}
+        frame = lettering_frame()
         legacy = cluster.Lettering(frame)
         current = cluster.Lettering(dict(frame, speedRow=1))
         self.assertEqual(legacy.zero_ink, (94, 153, 1))
@@ -62,6 +68,30 @@ class InstrumentTests(unittest.TestCase):
                     self.assertAlmostEqual(max(xs) - min(xs) + 1, 0.72 * ink_height, delta=2)
                     self.assertAlmostEqual(max(ys) + 1, center + 0.148 * face_height, delta=2)
 
+    def test_left_readings_and_percent_ink(self):
+        for height, descent in ((91, 2), (114, 14)):  # Cap-height and legacy Novum percent signs
+            face = cluster.Lettering(dict(lettering_frame(height, descent), speedRow=1))
+            for dark in (False, True):
+                with self.subTest(percent_height=height, dark=dark):
+                    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 448)
+                    fields = {"range_m_aaos": 0, "soc_aaos": 0, "usable_capacity_wh": 100}
+                    cluster.draw(cairo.Context(surface), 1920, 448, fields, face, dark=dark)
+                    surface.flush()
+                    pixels = memoryview(surface.get_data()).cast("I")
+                    bg = pixels[0] & 255
+
+                    def ink_rows(left, right, top=225, bottom=280):
+                        return [y for y in range(top, bottom) if any(
+                            abs((pixels[y * 1920 + x] & 255) - bg) > 30 for x in range(left, right))]
+
+                    self.assertAlmostEqual(len(ink_rows(416, 450, 145, 215)), 45, delta=1)
+                    digit = ink_rows(485, 509)
+                    sign = ink_rows(510, 550)
+                    self.assertAlmostEqual(len(digit), 28, delta=1)
+                    self.assertAlmostEqual(len(sign) / len(digit), 0.72, delta=0.06)
+                    self.assertAlmostEqual(digit[-1], sign[-1], delta=1)
+                    self.assertFalse(ink_rows(1338, 1510, 145, 280))
+
     def test_independent_units_and_reverse_speed(self):
         self.assertEqual(labels({"speed_display_aaos": -26.8224, "speed_unit": "mph",
                                  "range_m_aaos": 160934.4, "distance_unit": "km"}),
@@ -69,8 +99,9 @@ class InstrumentTests(unittest.TestCase):
         self.assertEqual(labels({"range_m_aaos": 160934.4, "distance_unit": "mi"}), ["–", "100", "mi"])
 
     def test_usable_capacity_and_unknown_signals(self):
-        self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 50, "pack_capacity_wh": 100}), ["–", "90%"])
-        self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 0, "pack_capacity_wh": 100}), ["–", "45%"])
+        self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 50, "pack_capacity_wh": 100}), ["–", "90", "%"])
+        self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 0, "pack_capacity_wh": 100}), ["–", "45", "%"])
+        self.assertEqual(labels({"soc_aaos": 110, "usable_capacity_wh": 100}), ["–", "100", "%"])
         self.assertEqual(labels({"soc_aaos": 45, "gear_selected": "UNKNOWN", "speed_display_aaos": float("nan")}), ["–"])
         self.assertEqual(labels({"speed_display_aaos": 0}), ["0", "km/h"])
 

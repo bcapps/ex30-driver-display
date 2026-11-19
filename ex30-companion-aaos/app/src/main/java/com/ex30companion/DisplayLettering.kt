@@ -22,16 +22,20 @@ object DisplayLettering {
     private fun novum(weight: String) =
         Typeface.create("VolvoNovum-$weight", Typeface.NORMAL).takeUnless { it == Typeface.DEFAULT }
 
+    private fun inter(assets: AssetManager, weight: Int) = Typeface.Builder(assets, "InterVariable.ttf")
+        .setFontVariationSettings("'wght' $weight").build()
+
     fun frame(assets: AssetManager): String {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             color = Color.WHITE
         }
         // Six cells per row leave room for complete unit labels like km/h.
         val regular = novum("Regular")
-        val gearFaces = listOf(novum("SemiLight") ?: Typeface.create("sans-serif-light", Typeface.NORMAL),
+        val semiLight = novum("SemiLight")
+        val gearFaces = listOf(semiLight ?: Typeface.create("sans-serif-light", Typeface.NORMAL),
             novum("Medium") ?: Typeface.create("sans-serif-medium", Typeface.NORMAL))
-        val speedFace = regular ?: Typeface.Builder(assets, "InterVariable.ttf")
-            .setFontVariationSettings("'wght' 360").build()
+        val speedFace = regular ?: inter(assets, 360)
+        val readingFace = semiLight ?: inter(assets, 330)
         val widths = JSONArray()
         val bitmap = Bitmap.createBitmap(CELL * 6, 192 * 4 * gearFaces.size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -39,13 +43,17 @@ object DisplayLettering {
             val advances = JSONArray()
             for ((i, label) in labels.withIndex()) {
                 val digit = i < 10
-                val speedDigit = row == 1 && digit
                 paint.typeface = when {
-                    speedDigit -> speedFace
+                    digit -> if (row == 1) speedFace else readingFace
+                    label == "km" || label == "mi" || label == "m" || label == "%" -> readingFace
                     label.length == 1 && label[0] in "PRND" -> gearFace
                     else -> regular ?: Typeface.DEFAULT
                 }
-                paint.fontFeatureSettings = if (speedDigit) "'lnum' 1, 'tnum' 1" else null
+                paint.fontFeatureSettings = when {
+                    digit -> "'lnum' 1, 'tnum' 1"
+                    label == "%" -> "'case' 1"
+                    else -> null
+                }
                 paint.textSize = if (digit) 216f else 128f
                 val baseline = if (digit) 174 else 150
                 canvas.drawText(label, (i % 6 * CELL + 4).toFloat(),

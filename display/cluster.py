@@ -45,24 +45,31 @@ class Lettering:
         self.speed_row = frame.get("speedRow", 0)
         if type(self.speed_row) is not int or self.speed_row not in (0, 1):
             raise ValueError("Invalid speed lettering row")
-        self.zero_ink = self.measure_zero()
+        self.zero_ink = self.measure_ink("0", self.speed_row)
+        _, digit_height, digit_bottom = self.zero_ink if self.speed_row == 0 else self.measure_ink("0", 0)
+        _, sign_height, sign_bottom = self.measure_ink("%", 0)
+        # The EX30 strip's % is about 17 pixels tall beside 23-pixel digits.
+        # Measuring both outlines also accommodates the taller % in older car apps.
+        self.percent_scale = 0.72 * (digit_height / 216) / (sign_height / 128)
+        self.percent_offset = digit_bottom / 216 - self.percent_scale * sign_bottom / 128
 
-    def measure_zero(self):
-        # Measure visible ink once. The car's fallback font can have different proportions.
+    def measure_ink(self, label, block):
+        index = LABELS.index(label)
         tile = cairo.ImageSurface(cairo.FORMAT_A8, 320, 192)
         ctx = cairo.Context(tile)
-        ctx.set_source_surface(self.surface, 0, -self.speed_row * 768)
+        ctx.set_source_surface(self.surface, -(index % 6) * 320, -block * 768 - index // 6 * 192)
         ctx.paint()
         tile.flush()
         mask = bytes(tile.get_data()).translate(bytes(128) + b"\xff" * 128)
         rows = [mask[y:y + 320] for y in range(0, len(mask), tile.get_stride())]
         ink = [(y, row.find(b"\xff"), row.rfind(b"\xff")) for y, row in enumerate(rows) if b"\xff" in row]
         if not ink:
-            raise ValueError("Missing speed zero")
+            raise ValueError(f"Missing lettering for {label}")
         left = min(left for _, left, _ in ink)
         right = max(right for _, _, right in ink) + 1
         bottom = ink[-1][0] + 1
-        return right - left, bottom - ink[0][0], bottom - 174
+        baseline = 174 if index < 10 else 150
+        return right - left, bottom - ink[0][0], bottom - baseline
 
     def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
         indices = [LABELS.index(label) for label in ([text] if text in LABELS else text)]
@@ -203,12 +210,14 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     else:
         paint_text(ctx, "–", 954, 291, 210, ink, lettering, align=0.5)
 
+    reading_x = 416
+    reading_ink = ink if dark else "#686868"
     distance = number(fields, "range_m_aaos")
     unit = fields.get("distance_unit", "km")
     divisor = {"mi": 1609.344, "km": 1000, "m": 1}.get(unit)
     if distance is not None and distance >= 0 and divisor:
-        advance = paint_text(ctx, whole(distance / divisor), 1338, 202, 63, ink, lettering)
-        paint_text(ctx, unit, 1343 + advance, 202, 33, ink, lettering)
+        advance = paint_text(ctx, whole(distance / divisor), reading_x, 202, 63, reading_ink, lettering)
+        paint_text(ctx, unit, reading_x + advance + 5, 202, 33, reading_ink, lettering)
 
     energy = number(fields, "soc_aaos")
     capacity = number(fields, "usable_capacity_wh")
@@ -216,8 +225,12 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
         capacity = number(fields, "pack_capacity_wh")
     if energy is not None and energy >= 0 and capacity is not None and capacity > 0:
         percent = min(100, 100 * energy / capacity)
-        battery(ctx, 1342, 237, percent, ink)
-        paint_text(ctx, whole(percent) + "%", 1407, 263, 39, ink, lettering)
+        battery(ctx, reading_x + 4, 237, percent, reading_ink)
+        x, y, size = reading_x + 69, 263, 39
+        advance = paint_text(ctx, whole(percent), x, y, size, reading_ink, lettering)
+        sign_scale = lettering.percent_scale if lettering else 0.72
+        sign_offset = lettering.percent_offset if lettering else 0
+        paint_text(ctx, "%", x + advance + 2, y + size * sign_offset, size * sign_scale, secondary, lettering)
 
     gear = fields.get("gear_selected")
     if gear in ("P", "R", "N", "D"):
