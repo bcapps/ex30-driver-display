@@ -38,7 +38,7 @@ class Lettering:
             raise ValueError("Unexpected lettering image size")
         widths = frame["advances"]
         if (len(widths) != 2 or any(len(row) != len(LABELS) for row in widths)
-                or any(type(w) not in (int, float) or not 0 < w <= 316 for row in widths for w in row)):
+                or any(type(w) not in (int, float) or not 0 < w <= 320 for row in widths for w in row)):
             raise ValueError("Invalid label widths")
         self.surface = cairo.ImageSurface.create_from_png(io.BytesIO(png))
         self.widths = widths
@@ -64,11 +64,11 @@ class Lettering:
         bottom = ink[-1][0] + 1
         return right - left, bottom - ink[0][0], bottom - 174
 
-    def draw(self, ctx, text, x, y, size, weight, align):
+    def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
         indices = [LABELS.index(label) for label in ([text] if text in LABELS else text)]
         scales = [size / (216 if i < 10 else 128) for i in indices]
         advances = [self.widths[weight][i] * scale for i, scale in zip(indices, scales)]
-        width = sum(advances)
+        width = sum(advances) + tracking * (len(advances) - 1)
         ctx.save()
         ctx.translate(x - width * align, y)
         for i, scale, advance in zip(indices, scales, advances):
@@ -79,7 +79,7 @@ class Lettering:
             ctx.clip()
             ctx.mask_surface(self.surface, -4 - i % 6 * 320, -baseline - weight * 768 - i // 6 * 192)
             ctx.restore()
-            ctx.translate(advance, 0)
+            ctx.translate(advance + tracking, 0)
         ctx.restore()
         return width
 
@@ -105,16 +105,21 @@ def paint_speed(ctx, text, face_height, ink, lettering):
         ctx.set_font_size(216)
         _, top, width, height, _, _ = ctx.text_extents("0")
         descent = top + height
-        row = 0
     else:
         width, height, descent = lettering.zero_ink
-        row = lettering.speed_row
-    # The photographed EX90 zero is 0.76 as wide as it is tall.
-    # Its ink spans 34% of the lit panel and ends 65% of the way down.
+    # EX90 Calm supplies the size and placement. The EX30 strip's zero is
+    # 100 by 139 pixels, with 12 pixels of clear space after the preceding 8.
     ink_height = 0.34 * face_height
     ctx.translate(954, HEIGHT / 2 + 0.148 * face_height)
-    ctx.scale(0.756 * ink_height / width, ink_height / height)
-    paint_text(ctx, text, 0, -descent, 216, ink, lettering, weight=row, align=0.5)
+    ctx.scale(0.72 * ink_height / width, ink_height / height)
+    if lettering is None:
+        paint_text(ctx, text, 0, -descent, 216, ink, align=0.5)
+    else:
+        set_color(ctx, ink)
+        row = lettering.speed_row
+        # The centres of the 8 and 0 are 114 pixels apart for a 100-pixel-wide zero.
+        tracking = 1.14 * width - lettering.widths[row][0]
+        lettering.draw(ctx, text, 0, -descent, 216, row, 0.5, tracking=tracking)
     ctx.restore()
 
 

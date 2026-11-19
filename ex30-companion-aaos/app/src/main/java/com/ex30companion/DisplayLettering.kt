@@ -27,24 +27,25 @@ object DisplayLettering {
             color = Color.WHITE
         }
         // Six cells per row leave room for complete unit labels like km/h.
-        val faces = listOf(novum("Regular") ?: Typeface.DEFAULT,
+        val regular = novum("Regular")
+        val gearFaces = listOf(novum("SemiLight") ?: Typeface.create("sans-serif-light", Typeface.NORMAL),
             novum("Medium") ?: Typeface.create("sans-serif-medium", Typeface.NORMAL))
-        val semiLight = novum("SemiLight")
-        val inactiveGear = semiLight ?: Typeface.create("sans-serif-light", Typeface.NORMAL)
-        val speedFace = semiLight ?: Typeface.Builder(assets, "InterVariable.ttf")
-            .setFontVariationSettings("'wght' 330").build()
+        val speedFace = regular ?: Typeface.Builder(assets, "InterVariable.ttf")
+            .setFontVariationSettings("'wght' 360").build()
         val widths = JSONArray()
-        val bitmap = Bitmap.createBitmap(CELL * 6, 192 * 4 * faces.size, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(CELL * 6, 192 * 4 * gearFaces.size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        for ((row, face) in faces.withIndex()) {
+        for ((row, gearFace) in gearFaces.withIndex()) {
             val advances = JSONArray()
             for ((i, label) in labels.withIndex()) {
                 val digit = i < 10
+                val speedDigit = row == 1 && digit
                 paint.typeface = when {
-                    row == 1 && digit -> speedFace
-                    row == 0 && label.length == 1 && label[0] in "PRND" -> inactiveGear
-                    else -> face
+                    speedDigit -> speedFace
+                    label.length == 1 && label[0] in "PRND" -> gearFace
+                    else -> regular ?: Typeface.DEFAULT
                 }
+                paint.fontFeatureSettings = if (speedDigit) "'lnum' 1, 'tnum' 1" else null
                 paint.textSize = if (digit) 216f else 128f
                 val baseline = if (digit) 174 else 150
                 canvas.drawText(label, (i % 6 * CELL + 4).toFloat(),

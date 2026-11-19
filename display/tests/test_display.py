@@ -28,12 +28,23 @@ class InstrumentTests(unittest.TestCase):
         ctx.fill()
         png = io.BytesIO()
         atlas.write_to_png(png)
+        widths = [[130] * len(cluster.LABELS) for _ in range(2)]
+        widths[1][cluster.LABELS.index("km/h")] = 318  # Novum Medium in older car apps
         frame = {"version": 1, "labels": cluster.LABELS, "png": base64.b64encode(png.getvalue()),
-                 "advances": [[130] * len(cluster.LABELS)] * 2}
+                 "advances": widths}
         legacy = cluster.Lettering(frame)
         current = cluster.Lettering(dict(frame, speedRow=1))
         self.assertEqual(legacy.zero_ink, (94, 153, 1))
         self.assertEqual(current.zero_ink, (113, 154, 4))
+        pair = cairo.ImageSurface(cairo.FORMAT_A8, 400, 350)
+        ctx = cairo.Context(pair)
+        ctx.translate(-754, 0)
+        cluster.paint_speed(ctx, "00", 480, cluster.DAY[1], current)
+        pair.flush()
+        scan = bytes(pair.get_data())[220 * pair.get_stride():220 * pair.get_stride() + 400]
+        starts = [x for x in range(1, 400) if scan[x - 1] < 128 <= scan[x]]
+        self.assertEqual(len(starts), 2)
+        self.assertAlmostEqual(starts[1] - starts[0], 0.34 * 480 * 0.72 * 1.14, delta=1)
         for lettering in (None, legacy, current):
             for width, height in ((1920, 480), (1920, 448), (1280, 720)):
                 with self.subTest(lettering=lettering, size=(width, height)):
@@ -48,7 +59,7 @@ class InstrumentTests(unittest.TestCase):
                     xs, ys = zip(*ink)
                     ink_height = max(ys) - min(ys) + 1
                     self.assertAlmostEqual(ink_height, 0.34 * face_height, delta=2)
-                    self.assertAlmostEqual(max(xs) - min(xs) + 1, 0.756 * ink_height, delta=2)
+                    self.assertAlmostEqual(max(xs) - min(xs) + 1, 0.72 * ink_height, delta=2)
                     self.assertAlmostEqual(max(ys) + 1, center + 0.148 * face_height, delta=2)
 
     def test_independent_units_and_reverse_speed(self):
