@@ -2,12 +2,16 @@
 
 A Bluetooth instrument display for the Volvo EX30. A read-only Android Automotive app sends readings directly to a Raspberry Pi. The instruments follow the layout of the **EX90 Calm** display, with the EX30's light and dark styling.
 
-![Day preview with a centered speed of zero, range and battery charge to the right, and Park selected](docs/calm-day.png)
+![Day preview with range and battery charge on the left, a centred speed of zero, and Park selected on the right](docs/calm-day.png)
 ![Night preview of the same instruments](docs/calm-night.png)
 
 The screenshots come from the running Pi kiosk on a 1920 × 480 virtual screen. Speed uses **Volvo Novum Regular with tabular lining digits** when available. The EX30 emulator ships Novum Regular 2.001 at `/product/fonts/VolvoNovum-Regular.ttf`. The launcher and System UI contain identical copies. Its tabular 8 and 0 are 530 and 510 font units wide and both are 712 units tall. At the 139-pixel height in Volvo’s published EX30 Calm view, those outlines predict widths of 103.5 and 99.6 pixels. The image measures 104 and 100. The 12-pixel gap comes from the image. The factory screen’s exact text-style declaration on retail 2.x remains unverified. [Volvo’s EX30 Calm view](https://www.volvocars.com/uk/cars/ex30-electric/features/) · [Volvo’s archived EX30 emulator catalog](https://web.archive.org/web/20260903221015id_/https://developer.volvocars.com/sdk/volvo-sys-img.xml)
 
-Speed is centred and occupies about 34% of the wide panel’s height, following the EX90 photograph. Its digit width and spacing follow the EX30 top strip. The other readings use Regular, and the gear column uses SemiLight and Medium. On systems without the Volvo font, including the Google Automotive emulator used for these screenshots, speed uses the project’s Inter font at weight 360. [Volvo’s EX90 photograph, p. 43](https://www.volvocars-news.ch/wp-content/uploads/2022/12/Volvo_FTM_2_2022_DE.pdf#page=43)
+Speed is centred and occupies about 34% of the wide panel’s height, following the EX90 photograph. Its digit width and spacing follow the EX30 top strip. The gear column uses Novum SemiLight and Medium. [Volvo’s EX90 photograph, p. 43](https://www.volvocars-news.ch/wp-content/uploads/2022/12/Volvo_FTM_2_2022_DE.pdf#page=43)
+
+Range and battery charge sit to the left of speed. Both use Novum SemiLight with tabular digits. SemiLight was the closest visual match to the EX30 top strip, with Regular a close second. The emulator’s decoded `activity_charging.xml` specifies 136 sp and 40 sp for its charging settings page. The top strip’s own font weight remains unverified. Volvo’s image shows a percent sign about 16–17 pixels tall beside 23-pixel numerals. The kiosk uses Novum’s shorter percent glyph at 72% of the digits’ visible height and aligns their bottoms. [Volvo’s EX30 Calm view](https://www.volvocars.com/uk/cars/ex30-electric/features/)
+
+For these captures, a local Android test build loaded the three Novum faces from the archived EX30 emulator and sent the rendered lettering to the kiosk over Bluetooth. The distributed app looks up those faces on the car. When they are unavailable, it uses the bundled Inter at weight 330 for range and charge and 360 for speed.
 
 ## Connect
 

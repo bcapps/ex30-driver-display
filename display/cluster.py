@@ -225,7 +225,7 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
         capacity = number(fields, "pack_capacity_wh")
     if energy is not None and energy >= 0 and capacity is not None and capacity > 0:
         percent = min(100, 100 * energy / capacity)
-        battery(ctx, reading_x + 4, 237, percent, reading_ink)
+        battery(ctx, reading_x + 4, 237, percent, ink)
         x, y, size = reading_x + 69, 263, 39
         advance = paint_text(ctx, whole(percent), x, y, size, reading_ink, lettering)
         sign_scale = lettering.percent_scale if lettering else 0.72
