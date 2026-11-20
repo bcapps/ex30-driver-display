@@ -170,7 +170,27 @@ class InstrumentTests(unittest.TestCase):
                         self.assertEqual(pixel(marker, bottom - 4), 0xffffff if dark else 0x2e2e2e)
                         self.assertEqual(pixel(marker, bottom + 1), bg)
 
-    def test_charging_percent_and_limit_label_clear_the_marker(self):
+    @patch("cluster.time.monotonic", lambda: 0)
+    def test_changing_limit_only_moves_the_marker_and_its_label(self):
+        def above_marker(charge, limit):
+            ctx = canvas()
+            fields = {"charging_active": True, "soc_aaos": charge, "usable_capacity_wh": 100,
+                      "range_m_aaos": 384_000, "battery_power_mw": 22_000_000,
+                      "charge_seconds_remaining": 4500, "charge_target_pct": limit}
+            cluster.draw(ctx, 960, 240, fields)
+            surface = ctx.get_target()
+            surface.flush()
+            # At this size the limit marker starts on row 176.
+            return bytes(surface.get_data()[:176 * surface.get_stride()])
+
+        for charge in (64, None):
+            reference = above_marker(charge, 90)
+            for limit in (0, 50, 100, None):
+                with self.subTest(charge=charge, limit=limit):
+                    self.assertTrue(above_marker(charge, limit) == reference,
+                                    "Changing the charge limit altered the display above the marker")
+
+    def test_charging_percent_and_limit_label_placement(self):
         for sign_height, descent in ((91, 2), (114, 14)):
             face = cluster.Lettering(lettering_frame(sign_height, descent))
             for limit in (0, 50, 90, 100):
@@ -191,11 +211,12 @@ class InstrumentTests(unittest.TestCase):
                         self.assertTrue(ink(12, 100, 350, 395))
                         continue
 
-                    digit = [y for _, y in ink(marker - 200, marker - 64, 130, 290)]
-                    sign = [y for _, y in ink(marker - 64, marker, 130, 290)]
+                    # The current reading keeps its place from the original 90% layout.
+                    digit = [y for _, y in ink(1427, 1563, 130, 290)]
+                    sign = [y for _, y in ink(1563, 1627, 130, 290)]
                     self.assertAlmostEqual((max(sign) - min(sign)) / (max(digit) - min(digit)), 0.25, delta=0.02)
                     self.assertAlmostEqual(max(sign), max(digit), delta=1)
-                    self.assertFalse(ink(marker, marker + 80, 130, 290))
+                    self.assertFalse(ink(1627, 1707, 130, 290))
                     self.assertFalse(ink(marker + 2, marker + 100, 350, 395))
                     xs, ys = zip(*ink(marker - 112, marker - 2, 350, 395))
                     self.assertLessEqual(max(xs), marker - 10)

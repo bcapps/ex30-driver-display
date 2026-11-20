@@ -310,24 +310,6 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
         ctx.rectangle(0, bar_top, CHARGE_TRACK_WIDTH * percent / 100, bar_height)
         ctx.fill()
 
-    target = number(fields, "charge_target_pct")
-    marker = CHARGE_TRACK_WIDTH * target / 100 if target is not None and 0 <= target <= 100 else None
-    anchor = marker if marker is not None else CHARGE_TRACK_WIDTH
-
-    def label_x(width):
-        left = anchor - 12 - width
-        return left if left >= 0 else anchor + 12
-
-    # The EX90's large reading has a 21-pixel percent sign beside 85-pixel digits.
-    reading = PercentLabel(ctx, percent, 170, lettering, 0.25) if percent is not None else None
-    reading_width = reading.width if reading else text_width(ctx, "–", 122, lettering)
-    reading_x = label_x(reading_width)
-    status_x = min(450, reading_x - 100 - text_width(ctx, "Charging", 99, lettering))
-    if status_x < 120:  # Move the status across when the bolt and heading won't fit comfortably.
-        status_x = max(450, reading_x + reading_width + 96)
-
-    ctx.save()
-    ctx.translate(status_x - 450, 0)
     set_color(ctx, ink)
     ctx.move_to(398, 146)
     for x, y in ((370, 188), (386, 188), (380, 215), (409, 171), (393, 171)):
@@ -340,19 +322,27 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
         for token in group:
             x += paint_text(ctx, token, x, 297, 42, ink, lettering) + 8
         x += 23
-    ctx.restore()
 
-    if reading:
-        reading.paint(ctx, reading_x, 261, ink)
+    # Keep the large reading's right edge from the original 90% layout at every target.
+    reading_right = CHARGE_TRACK_WIDTH * 0.9 - 12
+    if percent is None:
+        paint_text(ctx, "–", reading_right, 256, 122, secondary, lettering, align=1)
     else:
-        paint_text(ctx, "–", reading_x, 256, 122, secondary, lettering)
-    if marker is not None:
+        reading = PercentLabel(ctx, percent, 170, lettering, 0.25)
+        reading.paint(ctx, reading_right - reading.width, 261, ink)
+
+    target = number(fields, "charge_target_pct")
+    if target is not None and 0 <= target <= 100:
+        marker = CHARGE_TRACK_WIDTH * target / 100
         tick_height = 0.083 * face_height
         set_color(ctx, ink)
         ctx.rectangle(marker - 1.5, bar_bottom - tick_height, 3, tick_height)
         ctx.fill()
         limit = PercentLabel(ctx, target, 32, lettering)
-        limit.paint(ctx, label_x(limit.width), bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
+        label_x = marker - 12 - limit.width
+        if label_x < 0:
+            label_x = marker + 12
+        limit.paint(ctx, label_x, bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
 
 
 def paint_driving(ctx, fields, lettering, face_height, dark):
