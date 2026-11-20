@@ -8,6 +8,7 @@ import time
 import cairo
 
 WIDTH, HEIGHT = 1920, 448
+FADE_OFFSET = 4
 # In the EX90 artwork, a 64% charge fills about 61% of the panel width.
 CHARGE_TRACK_WIDTH = WIDTH - 112
 # Sampled from Volvo's light and dark EX30 Calm reference images.
@@ -380,11 +381,10 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
         PercentLabel(ctx, percent, 39, lettering).paint(ctx, reading_x + 69, 263, reading_ink, secondary)
 
 
-def paint_welcome(ctx, fields, lettering, dark, show_prompt=True):
+def paint_welcome(ctx, fields, lettering, dark):
     _, ink, secondary, *_ = NIGHT if dark else DAY
     paint_text(ctx, WELCOME_LABELS[0], 256, 213, 88, ink, lettering, weight=1)
-    if show_prompt:
-        paint_text(ctx, WELCOME_LABELS[1], 256, 271, 32, secondary if dark else "#686868", lettering)
+    paint_text(ctx, WELCOME_LABELS[1], 256, 271, 32, secondary if dark else "#686868", lettering)
     paint_energy(ctx, fields, lettering, dark, 1410)
 
 
@@ -417,10 +417,14 @@ class FaceTransition:
         self.mode = self.previous = None
         self.started = 0
         self.departure = 0
+        self.welcome_fields = None
 
-    def progress(self, mode):
+    def progress(self, mode, fields=None):
         now = time.monotonic()
-        progress = min(1, (now - self.started) / 0.32)
+        elapsed = min(1, (now - self.started) / 0.32)
+        progress = elapsed * elapsed * (3 - 2 * elapsed)
+        if mode == "welcome" or mode is None:
+            self.welcome_fields = fields
         if mode != self.mode:
             self.departure = progress
             self.previous, self.mode = self.mode, mode
@@ -431,13 +435,12 @@ class FaceTransition:
         return progress
 
 
-def fade(ctx, progress, painter, *args):
-    if progress >= 1:
+def fade(ctx, opacity, painter, *args):
+    if opacity >= 1:
         painter(ctx, *args)
-    elif progress > 0:
-        opacity = progress * progress * (3 - 2 * progress)
+    elif opacity > 0:
         ctx.save()
-        ctx.translate(0, 4 * (1 - opacity))
+        ctx.translate(0, FADE_OFFSET * (1 - opacity))
         ctx.push_group()
         painter(ctx, *args)
         ctx.pop_group_to_source()
@@ -448,7 +451,7 @@ def fade(ctx, progress, painter, *args):
 def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", transition=None):
     bg, _, secondary, _, brake, _ = NIGHT if dark else DAY
     mode = display_mode(fields)
-    progress = transition.progress(mode) if transition else 1
+    progress = transition.progress(mode, fields) if transition else 1
     if mode == "charging" and not dark:
         bg = "#ebebeb"
     set_color(ctx, bg)
@@ -465,13 +468,18 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
     elif mode == "welcome":
         fade(ctx, progress, paint_welcome, fields, lettering, dark)
     else:
+        leaving_welcome = progress < 1 and transition.previous == "welcome"
         paint_driving(ctx, fields, lettering, face_height, dark)
-        energy_progress = progress
-        if progress < 1 and transition.previous == "welcome":
-            # Gear and speed are already visible. Clear the greeting before range takes its place.
-            fade(ctx, transition.departure * (1 - 2 * progress), paint_welcome, fields, lettering, dark, False)
-            energy_progress = 2 * progress - 1
-        fade(ctx, energy_progress, paint_energy, fields, lettering, dark, 192)
+        fade(ctx, 1 if leaving_welcome else progress, paint_energy, fields, lettering, dark, 192)
+        if leaving_welcome:
+            # Dissolve the welcome face and its background together over the live instruments.
+            ctx.push_group()
+            set_color(ctx, bg)
+            ctx.paint()
+            ctx.translate(0, FADE_OFFSET * transition.departure * progress)
+            fade(ctx, transition.departure, paint_welcome, transition.welcome_fields, lettering, dark)
+            ctx.pop_group_to_source()
+            ctx.paint_with_alpha(1 - progress)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:

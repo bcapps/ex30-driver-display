@@ -156,7 +156,7 @@ class InstrumentTests(unittest.TestCase):
                          [*cluster.WELCOME_LABELS, "100", "mi", "64", "%"])
 
     @patch("cluster.time.monotonic")
-    def test_welcome_fades_once_and_gear_and_speed_appear_on_first_drive_frame(self, clock):
+    def test_welcome_entrance_and_interrupted_handoff(self, clock):
         parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
         moving = dict(parked, gear_selected="R", speed_display_aaos=-5)
         transition = cluster.FaceTransition()
@@ -170,17 +170,55 @@ class InstrumentTests(unittest.TestCase):
         self.assertEqual(frame(1, parked), (True, []))
         self.assertEqual(frame(1.12, parked), (True, list(cluster.WELCOME_LABELS)))
         self.assertEqual(frame(2, parked), (False, list(cluster.WELCOME_LABELS)))
-        animating, words = frame(3, moving)
-        self.assertTrue(animating)
-        self.assertIn("18", words)
-        self.assertIn("R", words)
-        self.assertNotIn(cluster.WELCOME_LABELS[1], words)
-        self.assertNotIn("Hello", frame(3.2, moving)[1])
+        self.assertTrue(frame(3, moving)[0])
         self.assertFalse(frame(4, moving)[0])
         transition.progress(None)  # Lost the connection while driving.
         self.assertFalse(frame(5, moving)[0])
         frame(6, parked)
         self.assertNotIn("Hello", frame(6, moving)[1])  # Shift before the greeting ever became visible.
+
+    @patch("cluster.time.monotonic")
+    def test_whole_welcome_crossfades_over_the_live_driving_face(self, clock):
+        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0,
+                  "range_m_aaos": 128_000, "soc_aaos": 31, "usable_capacity_wh": 100}
+        selected = dict(parked, gear_selected="D", range_m_aaos=127_000)
+        moving = dict(selected, speed_display_aaos=5, battery_power_mw=-12_000_000)
+
+        def render(fields, transition=None):
+            ctx = canvas()
+            cluster.draw(ctx, 960, 240, fields, dark=dark, transition=transition)
+            return ctx.get_target()
+
+        def pixels(surface):
+            surface.flush()
+            return bytes(surface.get_data())
+
+        for dark in (False, True):
+            with self.subTest(dark=dark):
+                transition = cluster.FaceTransition()
+                clock.return_value = 0
+                render(parked, transition)
+                welcome = render(parked)
+                clock.return_value = 1
+                self.assertTrue(pixels(render(selected, transition)) == pixels(welcome))
+
+                clock.return_value = 1.16
+                actual = pixels(render(moving, transition))
+                expected = render(moving)
+                ctx = cairo.Context(expected)
+                # Half of the 4 px exit motion is one device pixel on this half-size canvas.
+                ctx.set_source_surface(welcome, 0, 1)
+                ctx.paint_with_alpha(0.5)
+                self.assertTrue(all(abs(a - b) <= 1 for a, b in zip(actual, pixels(expected))),
+                                "Every instrument should follow the same dissolve")
+
+                clock.return_value = 1.33
+                self.assertTrue(pixels(render(moving, transition)) == pixels(render(moving)))
+                clock.return_value = 2
+                render(parked, transition)
+                clock.return_value = 2.08
+                partial_welcome = pixels(render(parked, transition))
+                self.assertTrue(pixels(render(moving, transition)) == partial_welcome)
 
     def test_welcome_lettering_accepts_old_and_new_senders(self):
         old = lettering_frame()
