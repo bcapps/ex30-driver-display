@@ -8,7 +8,7 @@ import time
 import cairo
 
 WIDTH, HEIGHT = 1920, 448
-# Room beyond 100% for the charge-limit label. Both readings use this scale.
+# In the EX90 artwork, a 64% charge fills about 61% of the panel width.
 CHARGE_TRACK_WIDTH = WIDTH - 112
 # Sampled from Volvo's light and dark EX30 Calm reference images.
 DAY = ("#f0f0f0", "#444444", "#969696", "#d6d6d6", "#c52631", "#22764c")
@@ -303,7 +303,8 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
     bar_height = 0.61 * face_height
     bar_bottom = bar_top + bar_height
     if percent is not None and percent > 0:
-        green = (43, 126, 73) if dark else (159, 197, 147)
+        # The daytime shade keeps Volvo's green hue and lifts its brightness for dark text.
+        green = (43, 126, 73) if dark else (58, 170, 98)
         pulse = 0.92 + 0.08 * math.cos(time.monotonic() * math.tau / 4)
         ctx.set_source_rgba(*(c / 255 for c in green), pulse)
         ctx.rectangle(0, bar_top, CHARGE_TRACK_WIDTH * percent / 100, bar_height)
@@ -312,12 +313,15 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
     target = number(fields, "charge_target_pct")
     marker = CHARGE_TRACK_WIDTH * target / 100 if target is not None and 0 <= target <= 100 else None
     anchor = marker if marker is not None else CHARGE_TRACK_WIDTH
+
+    def label_x(width):
+        left = anchor - 12 - width
+        return left if left >= 0 else anchor + 12
+
     # The EX90's large reading has a 21-pixel percent sign beside 85-pixel digits.
     reading = PercentLabel(ctx, percent, 170, lettering, 0.25) if percent is not None else None
     reading_width = reading.width if reading else text_width(ctx, "–", 122, lettering)
-    reading_x = anchor - 12 - reading_width
-    if reading_x < 0:
-        reading_x = anchor + 12
+    reading_x = label_x(reading_width)
     status_x = min(450, reading_x - 100 - text_width(ctx, "Charging", 99, lettering))
     if status_x < 120:  # Move the status across when the bolt and heading won't fit comfortably.
         status_x = max(450, reading_x + reading_width + 96)
@@ -348,7 +352,7 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
         ctx.rectangle(marker - 1.5, bar_bottom - tick_height, 3, tick_height)
         ctx.fill()
         limit = PercentLabel(ctx, target, 32, lettering)
-        limit.paint(ctx, marker + 12, bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
+        limit.paint(ctx, label_x(limit.width), bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
 
 
 def paint_driving(ctx, fields, lettering, face_height, dark):

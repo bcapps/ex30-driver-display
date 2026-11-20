@@ -157,7 +157,7 @@ class InstrumentTests(unittest.TestCase):
                             return pixels[y * width + x] & 0xffffff
 
                         bg = pixel(0, 0)
-                        green = 0x2b7e49 if dark else 0x9fc593
+                        green = 0x2b7e49 if dark else 0x3aaa62
                         end = int(1808 / 1920 * width * charge / 100)
                         marker = int(1808 / 1920 * width * limit / 100)
                         for y in (top + 2, bottom - 4):
@@ -173,7 +173,7 @@ class InstrumentTests(unittest.TestCase):
     def test_charging_percent_and_limit_label_clear_the_marker(self):
         for sign_height, descent in ((91, 2), (114, 14)):
             face = cluster.Lettering(lettering_frame(sign_height, descent))
-            for limit in (50, 90, 100):
+            for limit in (0, 50, 90, 100):
                 with self.subTest(sign_height=sign_height, limit=limit):
                     fields = {"charging_active": True, "soc_aaos": 0, "usable_capacity_wh": 100,
                               "charge_target_pct": limit}
@@ -187,15 +187,18 @@ class InstrumentTests(unittest.TestCase):
                         return [(x, y) for y in range(top, bottom) for x in range(left, right)
                                 if pixels[y * 1920 + x] & 255 < 128]
 
+                    if limit == 0:
+                        self.assertTrue(ink(12, 100, 350, 395))
+                        continue
+
                     digit = [y for _, y in ink(marker - 200, marker - 64, 130, 290)]
                     sign = [y for _, y in ink(marker - 64, marker, 130, 290)]
                     self.assertAlmostEqual((max(sign) - min(sign)) / (max(digit) - min(digit)), 0.25, delta=0.02)
                     self.assertAlmostEqual(max(sign), max(digit), delta=1)
                     self.assertFalse(ink(marker, marker + 80, 130, 290))
-                    self.assertFalse(ink(marker - 80, marker - 2, 350, 395))
-                    xs, ys = zip(*ink(marker + 3, min(1920, marker + 112), 350, 395))
-                    self.assertGreaterEqual(min(xs), marker + 10)
-                    self.assertLess(max(xs), 1919)
+                    self.assertFalse(ink(marker + 2, marker + 100, 350, 395))
+                    xs, ys = zip(*ink(marker - 112, marker - 2, 350, 395))
+                    self.assertLessEqual(max(xs), marker - 10)
                     self.assertAlmostEqual((min(ys) + max(ys)) / 2, 373.5, delta=2)
 
 
