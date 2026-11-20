@@ -62,6 +62,7 @@ Run the preview and instrument tests from the repository root with Python 3 and 
 ```sh
 python3 display/preview.py day /tmp/ex30-day.png
 python3 display/preview.py night /tmp/ex30-night.png
+python3 display/preview.py night /tmp/ex30-welcome.png --welcome
 python3 display/preview.py day /tmp/ex30-charging.png --charging
 PYTHONPATH=display python3 -m unittest discover -s display/tests -v
 ```

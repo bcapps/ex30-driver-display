@@ -34,6 +34,16 @@ No Wi-Fi password, camera, OBD adapter or internet connection is needed for the 
 
 A missing speed displays a dash. Each snapshot replaces all the previous readings. If the car goes silent for three seconds, the Pi clears the instruments. The photograph’s recognized speed-limit sign, automatic-wiper indicator and position lamps are left empty because this app has no verified read for their factory states. Use the car’s instruments for warnings. [Vehicle signals](ex30-companion-aaos/docs/properties.md)
 
+## Welcome
+
+![Night welcome screen with Hello and the starting prompt on the left, and live range and battery on the right](docs/welcome-night.png)
+
+When the car first reports Park and zero speed after waking, the display fades in “Hello” and a short starting prompt. Range and battery appear on the right in the car’s units. The layout follows the EX90 shown in the road test. The 320 ms fade is this project’s timing. [EX90 dashboard walk-through](https://www.youtube.com/watch?v=7fxO3fzyoW0&t=892s) · [Volvo’s starting instructions](https://www.volvocars.com/uk/support/car/ex90/article/47d2c97fd33effd3c0a8cc3718c999b7-58bf8ef6ce7e618dc0a8b04a2f79ccf2-8664b2fa77a7e089c0a8296870d1a409/47d2c97fd33effd3c0a8cc3718c999b7-4e78107d596eb7b6c0a8b0970bdcd43f-8664b2fa77a7e089c0a8296870d1a409/) · [Welcome in daylight](docs/welcome-day.png) · [Animated transition](docs/welcome-to-drive.gif)
+
+Selecting D, R or N, or detecting motion, brings up live speed and gear on the first frame. The greeting fades out as the driving range takes its place on the left. The car app remembers that driving has started across Bluetooth reconnects and later stops in Park. Its existing screen and ignition signals rearm the greeting for the next wake. A connected cable keeps the charging or parked plug view. Update both the car app and the Pi to enable the greeting.
+
+The small odometer in the reference is omitted. The archived EX30 image declares only the privileged mileage permission. Newer Android versions also define a third-party mileage permission. [Android odometer property](https://developer.android.com/reference/android/car/VehiclePropertyIds#PERF_ODOMETER)
+
 ## Active charging
 
 ![Charging at 64 percent, with 384 km of range, 1 h 15 min remaining, 22 kW into the battery, and a 90 percent target](docs/charging-day.png)
@@ -51,6 +61,8 @@ The Pi shows “Done in” using the car’s remaining-time estimate and shows t
 ## Verification
 
 Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display switched to charging when the car reported an active session, followed day/night changes, and returned to the parked view when charging finished with the cable still connected. It also recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens. Current and earlier lettering frames both render. Charging-property availability on a retail EX30, its Bluetooth policy, the Pi’s radio and the attached panel still need a hardware test. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
+
+The welcome flow was also exercised over the paired virtual radios. Selecting a driving gear dismissed the greeting, reconnecting in Park kept the driving instruments, and an ignition sleep/wake cycle restored the greeting. The welcome screenshots and animation come from the Linux kiosk replaying those Android readings and rendered Novum lettering.
 
 ## Project
 

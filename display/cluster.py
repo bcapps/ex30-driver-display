@@ -15,6 +15,7 @@ DAY = ("#f0f0f0", "#444444", "#969696", "#d6d6d6", "#c52631", "#22764c")
 NIGHT = ("#2f3744", "#ffffff", "#99a5b3", "#717986", "#ff545b", "#69d99b")
 LABELS = tuple("0123456789PRND") + ("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
 CHARGING_LABELS = ("Charging", "Done in", "h", "min", "kW", ".")
+WELCOME_LABELS = ("Hello", "Press the brake and select D or R to start")
 
 
 def number(fields, key):
@@ -50,6 +51,10 @@ class Lettering:
         if self.charging_widths is not None and (len(self.charging_widths) != len(CHARGING_LABELS) or
                 any(type(w) not in (int, float) or not 0 < w <= 316 for w in self.charging_widths)):
             raise ValueError("Invalid charging label widths")
+        self.welcome_widths = frame.get("welcomeAdvances")
+        if self.welcome_widths is not None and (len(self.welcome_widths) != len(WELCOME_LABELS) or
+                any(type(w) not in (int, float) or not 0 < w <= 636 for w in self.welcome_widths)):
+            raise ValueError("Invalid welcome label widths")
         self.speed_row = frame.get("speedRow", 0)
         if type(self.speed_row) is not int or self.speed_row not in (0, 1):
             raise ValueError("Invalid speed lettering row")
@@ -78,6 +83,11 @@ class Lettering:
         return right - left, bottom - ink[0][0], bottom - baseline
 
     def layout(self, text, size, weight):
+        if self.welcome_widths and text in WELCOME_LABELS:
+            i = WELCOME_LABELS.index(text)
+            top, baseline, height, em = ((1440, 67, 69, 88), (1509, 25, 27, 32))[i]
+            scale = size / em
+            return [(1280, top, 640, baseline, height, scale, self.welcome_widths[i] * scale)]
         labels = (text,) if text in LABELS or text in CHARGING_LABELS else text
         glyphs = []
         for label in labels:
@@ -94,7 +104,7 @@ class Lettering:
                 advance = self.charging_widths[i] * scale
             else:
                 return None
-            glyphs.append((left, top, baseline, height, scale, advance))
+            glyphs.append((left, top, 320, baseline, height, scale, advance))
         return glyphs
 
     def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
@@ -104,10 +114,10 @@ class Lettering:
         width = sum(g[-1] for g in glyphs) + tracking * (len(glyphs) - 1)
         ctx.save()
         ctx.translate(x - width * align, y)
-        for left, top, baseline, height, scale, advance in glyphs:
+        for left, top, tile_width, baseline, height, scale, advance in glyphs:
             ctx.save()
             ctx.scale(scale, scale)
-            ctx.rectangle(-4, -baseline, 320, height)
+            ctx.rectangle(-4, -baseline, tile_width, height)
             ctx.clip()
             ctx.mask_surface(self.surface, -4 - left, -baseline - top)
             ctx.restore()
@@ -179,6 +189,7 @@ def parking_brake(ctx, lettering, ink):
     x, y = 1850, 41
     set_color(ctx, ink)
     ctx.set_line_width(3.1)
+    ctx.new_path()
     ctx.arc(x, y, 15, 0, math.tau)
     ctx.stroke()
     for angle in (0, math.pi):
@@ -274,6 +285,15 @@ def is_charging(fields):
     return plugged is True and gear == "P" and (number(fields, "battery_power_mw") or 0) >= 100_000
 
 
+def display_mode(fields):
+    if is_charging(fields):
+        return "charging"
+    if (fields.get("before_drive") is True and fields.get("gear_selected") == "P"
+            and number(fields, "speed_display_aaos") == 0 and fields.get("charge_port_connected") is not True):
+        return "welcome"
+    return "driving"
+
+
 def charging_details(fields):
     distance = range_reading(fields)
     if distance:
@@ -345,20 +365,8 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
         limit.paint(ctx, label_x, bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
 
 
-def paint_driving(ctx, fields, lettering, face_height, dark):
-    _, ink, secondary, track, _, regen = NIGHT if dark else DAY
-    speed = number(fields, "speed_display_aaos")
-    unit = fields.get("speed_unit", "km/h")
-    factor = {"mph": 3600 / 1609.344, "km/h": 3.6, "m/s": 1}.get(unit)
-    available = speed is not None and factor is not None
-    if available:
-        # Keep the wide instrument face centred on taller monitors.
-        paint_speed(ctx, whole(abs(speed) * factor), face_height, ink, lettering)
-        paint_text(ctx, unit, 954, 351, 37, ink, lettering, align=0.5)
-    else:
-        paint_text(ctx, "–", 954, 291, 210, ink, lettering, align=0.5)
-
-    reading_x = 192
+def paint_energy(ctx, fields, lettering, dark, reading_x):
+    _, ink, secondary, *_ = NIGHT if dark else DAY
     reading_ink = ink if dark else "#686868"
     distance = range_reading(fields)
     if distance:
@@ -370,6 +378,26 @@ def paint_driving(ctx, fields, lettering, face_height, dark):
     if percent is not None:
         battery(ctx, reading_x + 4, 237, percent, ink)
         PercentLabel(ctx, percent, 39, lettering).paint(ctx, reading_x + 69, 263, reading_ink, secondary)
+
+
+def paint_welcome(ctx, fields, lettering, dark, show_prompt=True):
+    _, ink, secondary, *_ = NIGHT if dark else DAY
+    paint_text(ctx, WELCOME_LABELS[0], 256, 213, 88, ink, lettering, weight=1)
+    if show_prompt:
+        paint_text(ctx, WELCOME_LABELS[1], 256, 271, 32, secondary if dark else "#686868", lettering)
+    paint_energy(ctx, fields, lettering, dark, 1410)
+
+
+def paint_driving(ctx, fields, lettering, face_height, dark):
+    _, ink, secondary, track, _, regen = NIGHT if dark else DAY
+    speed = number(fields, "speed_display_aaos")
+    unit = fields.get("speed_unit", "km/h")
+    factor = {"mph": 3600 / 1609.344, "km/h": 3.6, "m/s": 1}.get(unit)
+    if speed is not None and factor is not None:
+        paint_speed(ctx, whole(abs(speed) * factor), face_height, ink, lettering)
+        paint_text(ctx, unit, 954, 351, 37, ink, lettering, align=0.5)
+    else:
+        paint_text(ctx, "–", 954, 291, 210, ink, lettering, align=0.5)
 
     gear = fields.get("gear_selected")
     if gear in ("P", "R", "N", "D"):
@@ -384,26 +412,69 @@ def paint_driving(ctx, fields, lettering, face_height, dark):
         charge_plug(ctx, secondary)
 
 
-def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
+class FaceTransition:
+    def __init__(self):
+        self.mode = self.previous = None
+        self.started = 0
+        self.departure = 0
+
+    def progress(self, mode):
+        now = time.monotonic()
+        progress = min(1, (now - self.started) / 0.32)
+        if mode != self.mode:
+            self.departure = progress
+            self.previous, self.mode = self.mode, mode
+            self.started = now
+            progress = 0
+        if mode is None or (mode == "driving" and self.previous is None):
+            return 1
+        return progress
+
+
+def fade(ctx, progress, painter, *args):
+    if progress >= 1:
+        painter(ctx, *args)
+    elif progress > 0:
+        opacity = progress * progress * (3 - 2 * progress)
+        ctx.save()
+        ctx.translate(0, 4 * (1 - opacity))
+        ctx.push_group()
+        painter(ctx, *args)
+        ctx.pop_group_to_source()
+        ctx.paint_with_alpha(opacity)
+        ctx.restore()
+
+
+def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", transition=None):
     bg, _, secondary, _, brake, _ = NIGHT if dark else DAY
-    charging = is_charging(fields)
-    if charging and not dark:
+    mode = display_mode(fields)
+    progress = transition.progress(mode) if transition else 1
+    if mode == "charging" and not dark:
         bg = "#ebebeb"
     set_color(ctx, bg)
     ctx.paint()
     scale = min(width / WIDTH, height / HEIGHT)
     if scale <= 0:
-        return
+        return False
     ctx.save()
     ctx.translate((width - WIDTH * scale) / 2, (height - HEIGHT * scale) / 2)
     ctx.scale(scale, scale)
     face_height = min(height / scale, WIDTH / 4)
-    if charging:
-        paint_charging(ctx, fields, lettering, face_height, dark)
+    if mode == "charging":
+        fade(ctx, progress, paint_charging, fields, lettering, face_height, dark)
+    elif mode == "welcome":
+        fade(ctx, progress, paint_welcome, fields, lettering, dark)
     else:
         paint_driving(ctx, fields, lettering, face_height, dark)
+        energy_progress = progress
+        if progress < 1 and transition.previous == "welcome":
+            # Gear and speed are already visible. Clear the greeting before range takes its place.
+            fade(ctx, transition.departure * (1 - 2 * progress), paint_welcome, fields, lettering, dark, False)
+            energy_progress = 2 * progress - 1
+        fade(ctx, energy_progress, paint_energy, fields, lettering, dark, 192)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:
         paint_text(ctx, message, 960, 404, 30, secondary, align=0.5)
     ctx.restore()
+    return progress < 1

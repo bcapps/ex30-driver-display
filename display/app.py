@@ -8,7 +8,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
 
 from bluez import Receiver
-from cluster import draw, is_charging
+from cluster import FaceTransition, draw
 from stream import Stream
 
 
@@ -20,21 +20,28 @@ def main():
     window.add(area)
     stream = Stream()
     receiver = Receiver(dbus.SystemBus(), stream, area.queue_draw)
-    pulse_pending = False
+    transition = FaceTransition()
+    timer = interval = 0
 
-    def next_pulse():
-        nonlocal pulse_pending
-        pulse_pending = False
+    def refresh():
+        nonlocal timer, interval
+        timer = interval = 0
         area.queue_draw()
         return False
 
     def paint(widget, ctx):
-        nonlocal pulse_pending
-        draw(ctx, widget.get_allocated_width(), widget.get_allocated_height(), stream.fields,
-             stream.lettering, dark=stream.dark, message="" if stream.live else receiver.waiting)
-        if not pulse_pending and is_charging(stream.fields):
-            pulse_pending = True
-            GLib.timeout_add(125, next_pulse)
+        nonlocal timer, interval
+        if not stream.live:
+            transition.progress(None)
+        animating = draw(ctx, widget.get_allocated_width(), widget.get_allocated_height(), stream.fields,
+                         stream.lettering, dark=stream.dark, message="" if stream.live else receiver.waiting,
+                         transition=transition if stream.live else None)
+        delay = 16 if animating else 125 if transition.mode == "charging" else 0
+        if delay != interval:
+            if timer:
+                GLib.source_remove(timer)
+            interval = delay
+            timer = GLib.timeout_add(delay, refresh) if delay else 0
         return False
 
     area.connect("draw", paint)

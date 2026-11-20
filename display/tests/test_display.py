@@ -112,6 +112,20 @@ class InstrumentTests(unittest.TestCase):
             cluster.draw(canvas(), 960, 240, {"parking_brake": True})
             brake.assert_called_once()
 
+    def test_parking_brake_does_not_join_the_previous_text_path(self):
+        fields = {"gear_selected": "P", "speed_display_aaos": 0, "soc_aaos": 64, "usable_capacity_wh": 100}
+        for welcome in (False, True):
+            rows = []
+            for engaged in (False, True):
+                ctx = canvas()
+                cluster.draw(ctx, 960, 240, dict(fields, before_drive=welcome, parking_brake=engaged))
+                surface = ctx.get_target()
+                surface.flush()
+                stride = surface.get_stride()
+                rows.append(bytes(surface.get_data()[80 * stride:81 * stride]))
+            with self.subTest(welcome=welcome):
+                self.assertTrue(rows[0] == rows[1], "A stroke from the parking brake crossed the display")
+
     def test_active_charging_and_legacy_detection(self):
         plugged = {"charge_port_connected": True, "gear_selected": "P", "speed_display_aaos": 0}
         self.assertFalse(cluster.is_charging(plugged))
@@ -125,6 +139,57 @@ class InstrumentTests(unittest.TestCase):
             fields.update(change)
             with self.subTest(change=change):
                 self.assertFalse(cluster.is_charging(fields))
+
+    def test_welcome_requires_confirmed_stationary_park_before_driving(self):
+        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
+        self.assertEqual(cluster.display_mode(parked), "welcome")
+        for changes in ({"before_drive": False}, {"gear_selected": "D"}, {"gear_selected": "R"},
+                        {"gear_selected": "N"}, {"gear_selected": "UNKNOWN"}, {"speed_display_aaos": -0.1},
+                        {"speed_display_aaos": None}, {"charge_port_connected": True}):
+            with self.subTest(changes=changes):
+                self.assertEqual(cluster.display_mode(dict(parked, **changes)), "driving")
+        self.assertEqual(cluster.display_mode({"gear_selected": "P", "speed_display_aaos": 0}), "driving")
+        self.assertEqual(cluster.display_mode(dict(parked, charging_active=True)), "charging")
+        self.assertEqual(labels(parked), list(cluster.WELCOME_LABELS))
+        self.assertEqual(labels(dict(parked, soc_aaos=64, usable_capacity_wh=100,
+                                     range_m_aaos=160934.4, distance_unit="mi")),
+                         [*cluster.WELCOME_LABELS, "100", "mi", "64", "%"])
+
+    @patch("cluster.time.monotonic")
+    def test_welcome_fades_once_and_gear_and_speed_appear_on_first_drive_frame(self, clock):
+        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
+        moving = dict(parked, gear_selected="R", speed_display_aaos=-5)
+        transition = cluster.FaceTransition()
+
+        def frame(now, fields):
+            clock.return_value = now
+            with patch("cluster.paint_text", wraps=cluster.paint_text) as text:
+                animating = cluster.draw(canvas(), 960, 240, fields, transition=transition)
+            return animating, [call.args[1] for call in text.call_args_list]
+
+        self.assertEqual(frame(1, parked), (True, []))
+        self.assertEqual(frame(1.12, parked), (True, list(cluster.WELCOME_LABELS)))
+        self.assertEqual(frame(2, parked), (False, list(cluster.WELCOME_LABELS)))
+        animating, words = frame(3, moving)
+        self.assertTrue(animating)
+        self.assertIn("18", words)
+        self.assertIn("R", words)
+        self.assertNotIn(cluster.WELCOME_LABELS[1], words)
+        self.assertNotIn("Hello", frame(3.2, moving)[1])
+        self.assertFalse(frame(4, moving)[0])
+        transition.progress(None)  # Lost the connection while driving.
+        self.assertFalse(frame(5, moving)[0])
+        frame(6, parked)
+        self.assertNotIn("Hello", frame(6, moving)[1])  # Shift before the greeting ever became visible.
+
+    def test_welcome_lettering_accepts_old_and_new_senders(self):
+        old = lettering_frame()
+        self.assertIsNone(cluster.Lettering(old).layout("Hello", 88, 1))
+        face = cluster.Lettering(dict(old, welcomeAdvances=[122, 546]))
+        for i, size in enumerate((88, 32)):
+            self.assertEqual(cluster.text_width(canvas(), cluster.WELCOME_LABELS[i], size, face), (122, 546)[i])
+        with self.assertRaises(ValueError):
+            cluster.Lettering(dict(old, welcomeAdvances=[122, 680]))
 
     def test_charging_uses_only_available_readings(self):
         fields = {"charging_active": True, "soc_aaos": 32_000, "usable_capacity_wh": 50_000,
