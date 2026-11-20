@@ -16,7 +16,7 @@ For these captures, a local Android test build loaded the three Novum faces from
 ## Connect
 
 1. Install the Pi display on a Raspberry Pi with Bluetooth Classic and an attached screen.
-2. Open **Calm Driver Display** on the parked car and tap **Find display**. Grant the vehicle and Nearby devices permissions Android requests.
+2. Open **EX30 Driver Display** on the parked car and tap **Find display**. Grant the vehicle and Nearby devices permissions Android requests.
 3. Select the **EX30 Display** name shown on the Pi and approve Android’s pairing dialog. The Pi needs only its screen. Subsequent trips reuse the saved bond.
 
 No Wi-Fi password, camera, OBD adapter or internet connection is needed for the drive. This fork has its own Android application ID. See the installation and build steps, including retail installation availability. [Setup guide](SETUP.md)

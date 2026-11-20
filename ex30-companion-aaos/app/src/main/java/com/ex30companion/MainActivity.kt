@@ -11,11 +11,11 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.ex30companion.databinding.ActivityMainBinding
+import com.ex30companion.databinding.DisplayChoiceBinding
 
 /** A parked setup screen. Only an explicit selection can create a new bond. */
 @SuppressLint("MissingPermission")
@@ -117,11 +117,10 @@ class MainActivity : AppCompatActivity() {
         val name = device.name ?: return
         if (name != BridgeSettings.DISPLAY_NAME && !name.startsWith(BridgeSettings.DISPLAY_NAME + " ")) return
         if (!listed.add(device.address)) return
-        ui.devices.addView(Button(this).apply {
-            text = name
-            isAllCaps = false
-            setOnClickListener { pair(device) }
-        })
+        val choice = DisplayChoiceBinding.inflate(layoutInflater, ui.devices, false).root
+        choice.text = name
+        choice.setOnClickListener { pair(device) }
+        ui.devices.addView(choice)
     }
 
     private fun pair(device: BluetoothDevice) {

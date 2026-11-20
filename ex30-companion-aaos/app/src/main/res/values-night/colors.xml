@@ -1,0 +1,8 @@
+<resources>
+    <color name="setup_surface">#2F2F2F</color>
+    <color name="setup_title">#FFFFFF</color>
+    <color name="setup_secondary">#C2C2C2</color>
+    <color name="setup_button_pressed">#385380</color>
+    <color name="setup_button_pressed_label">#C2C2C2</color>
+    <color name="setup_button_disabled">#444444</color>
+</resources>

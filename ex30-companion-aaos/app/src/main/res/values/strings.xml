@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">Calm Driver Display</string>
+    <string name="app_name">EX30 Driver Display</string>
+    <string name="open_app_to_pair">Open %1$s while parked to pair your display.</string>
     <string name="setup_hint">Turn on the display, then find it here to pair over Bluetooth.</string>
     <string name="find_display">Find display</string>
     <string name="nearby_required">Allow Nearby devices to find and connect to your display.</string>

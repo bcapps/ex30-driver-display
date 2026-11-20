@@ -42,11 +42,12 @@ private class Ex30Session : Session() {
 
 private class Ex30Screen(carContext: CarContext) : Screen(carContext) {
     override fun onGetTemplate(): Template {
+        val appName = carContext.getString(R.string.app_name)
         val pane = Pane.Builder()
             .addRow(
                 Row.Builder()
-                    .setTitle("Calm Driver Display")
-                    .addText("Open Calm Driver Display while parked to pair your display.")
+                    .setTitle(appName)
+                    .addText(carContext.getString(R.string.open_app_to_pair, appName))
                     .build()
             )
             .build()

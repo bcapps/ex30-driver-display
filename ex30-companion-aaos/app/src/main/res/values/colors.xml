@@ -8,4 +8,11 @@
 
     <!-- Launcher icon -->
     <color name="ic_launcher_background">#0F2540</color>
+
+    <color name="setup_surface">#EBEBEB</color>
+    <color name="setup_title">#141414</color>
+    <color name="setup_secondary">#5C5C5C</color>
+    <color name="setup_button_pressed">#44649B</color>
+    <color name="setup_button_pressed_label">#EBEBEB</color>
+    <color name="setup_button_disabled">#D6D6D6</color>
 </resources>

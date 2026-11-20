@@ -31,7 +31,7 @@ A retail EX30 needs an installation channel Volvo permits. This fork has no Goog
 
 ## First pairing
 
-1. With the car parked, open **Calm Driver Display** and tap **Find display**.
+1. With the car parked, open **EX30 Driver Display** and tap **Find display**.
 2. Approve the permissions Android shows. Android can group vehicle speed under location, energy under car information and Bluetooth under nearby devices.
 3. Select the exact name displayed on your Pi, then tap **Pair** in Android’s system dialog. There is no code to enter. The Pi saves the first bonded car that connects to its display service.
 
