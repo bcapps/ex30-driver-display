@@ -37,7 +37,7 @@ class BridgeService : Service() {
 
         car = CarPropertyService(this)
         monitor = ParkedModeMonitor(this, scope)
-        link = getSystemService(BluetoothManager::class.java).adapter?.let { BridgeClient(this, it) }
+        link = getSystemService(BluetoothManager::class.java).adapter?.let { BridgeClient(this, it, monitor) }
         scope.launch {
             monitor.state.collect {
                 car.setParked(it)

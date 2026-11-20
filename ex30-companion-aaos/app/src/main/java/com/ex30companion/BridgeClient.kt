@@ -19,7 +19,8 @@ import java.util.UUID
 
 /** One bonded display, one writer, and no queue of old speed readings. */
 @SuppressLint("MissingPermission") // BridgeService checks BLUETOOTH_CONNECT before starting.
-class BridgeClient(private val context: Context, private val adapter: BluetoothAdapter) {
+class BridgeClient(private val context: Context, private val adapter: BluetoothAdapter,
+                   private val monitor: ParkedModeMonitor) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val lettering by lazy { DisplayLettering.frame(context.assets) }
     private var target: String? = null
@@ -86,6 +87,7 @@ class BridgeClient(private val context: Context, private val adapter: BluetoothA
 
     private fun snapshot(samples: Map<Int, Any>, mode: Int): JSONObject {
         val fields = JSONObject()
+        if (monitor.beforeDrive) fields.put("before_drive", true)
         for ((id, value) in samples) {
             val wire = WireFieldMapper.map(id, value) ?: continue
             val v = wire.value

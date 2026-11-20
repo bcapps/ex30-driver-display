@@ -20,6 +20,7 @@ object DisplayLettering {
     private const val CELL = 320
     private val labels = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "P", "R", "N", "D", "km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
     private val chargingLabels = listOf("Charging", "Done in", "h", "min", "kW", ".")
+    private val welcomeLabels = listOf("Hello", "Press the brake and select D or R to start")
     private fun novum(weight: String) =
         Typeface.create("VolvoNovum-$weight", Typeface.NORMAL).takeUnless { it == Typeface.DEFAULT }
 
@@ -74,6 +75,14 @@ object DisplayLettering {
             canvas.drawText(label, x.toFloat(), y.toFloat(), paint)
             chargingWidths.put(paint.measureText(label).toDouble())
         }
+        // Two lines share the final 640 × 96 strip of the existing atlas.
+        val welcomeWidths = JSONArray()
+        for ((i, label) in welcomeLabels.withIndex()) {
+            paint.typeface = if (i == 0) gearFaces[1] else readingFace
+            paint.textSize = if (i == 0) 88f else 32f
+            canvas.drawText(label, (4 * CELL + 4).toFloat(), if (i == 0) 1507f else 1534f, paint)
+            welcomeWidths.put(paint.measureText(label).toDouble())
+        }
         val png = ByteArrayOutputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             it.toByteArray()
@@ -81,6 +90,6 @@ object DisplayLettering {
         bitmap.recycle()
         return JSONObject().put("type", "lettering").put("version", 1).put("speedRow", 1)
             .put("labels", JSONArray(labels)).put("advances", widths).put("chargingAdvances", chargingWidths)
-            .put("png", Base64.encodeToString(png, Base64.NO_WRAP)).toString()
+            .put("welcomeAdvances", welcomeWidths).put("png", Base64.encodeToString(png, Base64.NO_WRAP)).toString()
     }
 }
