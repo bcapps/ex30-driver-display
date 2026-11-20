@@ -267,7 +267,7 @@ def charging_details(fields):
         yield (f"{kw:.1f}".removesuffix(".0") if kw < 10 else whole(kw), "kW")
 
 
-def paint_charging(ctx, fields, lettering, dark):
+def paint_charging(ctx, fields, lettering, panel_height, dark):
     _, ink, secondary, *_ = NIGHT if dark else DAY
     if not dark:
         ink = "#2e2e2e"
@@ -277,7 +277,8 @@ def paint_charging(ctx, fields, lettering, dark):
         green = (43, 126, 73) if dark else (159, 197, 147)
         rgb = tuple(c / 255 for c in green)
         pulse = 0.92 + 0.08 * math.cos(time.monotonic() * math.tau / 4)
-        gradient = cairo.LinearGradient(0, 85, 0, 360)
+        top = (HEIGHT - panel_height) / 2
+        gradient = cairo.LinearGradient(0, top, 0, top + panel_height)
         if dark:
             gradient.add_color_stop_rgba(0, *rgb, 0.22)
         else:
@@ -288,7 +289,7 @@ def paint_charging(ctx, fields, lettering, dark):
         fade.add_color_stop_rgba(0, 0, 0, 0, 0.05)
         fade.add_color_stop_rgba(1, 0, 0, 0, 1)
         ctx.save()
-        ctx.rectangle(0, 85, width, 275)
+        ctx.rectangle(0, top, width, panel_height)
         ctx.clip()
         ctx.set_source(gradient)
         ctx.mask(fade)
@@ -374,10 +375,11 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     ctx.save()
     ctx.translate((width - WIDTH * scale) / 2, (height - HEIGHT * scale) / 2)
     ctx.scale(scale, scale)
+    panel_height = height / scale
     if charging:
-        paint_charging(ctx, fields, lettering, dark)
+        paint_charging(ctx, fields, lettering, panel_height, dark)
     else:
-        paint_driving(ctx, fields, lettering, min(height / scale, WIDTH / 4), dark)
+        paint_driving(ctx, fields, lettering, min(panel_height, WIDTH / 4), dark)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:

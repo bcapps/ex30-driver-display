@@ -137,18 +137,25 @@ class InstrumentTests(unittest.TestCase):
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600})), [["Done in", "1", "h"]])
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1})), [["Done in", "1", "min"]])
 
-    def test_charging_fill_tracks_battery_level_in_both_modes(self):
-        for dark in (False, True):
-            surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 448)
-            fields = {"charging_active": True, "soc_aaos": 25, "usable_capacity_wh": 100, "charge_target_pct": 90}
-            with patch("cluster.time.monotonic", return_value=0):
-                cluster.draw(cairo.Context(surface), 1920, 448, fields, dark=dark)
-            surface.flush()
-            pixels = memoryview(surface.get_data()).cast("I")
-            bg = pixels[0]
-            self.assertNotEqual(pixels[325 * 1920 + 479], bg)
-            self.assertEqual(pixels[325 * 1920 + 480], bg)
-            self.assertNotEqual(pixels[354 * 1920 + 1728], bg)
+    def test_charging_gradient_fills_panel_height_to_battery_level(self):
+        fields = {"charging_active": True, "soc_aaos": 25, "usable_capacity_wh": 100, "charge_target_pct": 90}
+        width = 1920
+        for height in (480, 1080):
+            for dark in (False, True):
+                with self.subTest(height=height, dark=dark):
+                    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
+                    cluster.draw(cairo.Context(surface), width, height, fields, dark=dark)
+                    surface.flush()
+                    pixels = memoryview(surface.get_data()).cast("I")
+                    bg = pixels[width - 1]
+                    edge = width // 4
+                    last_row = (height - 1) * width
+                    for row_start in (0, last_row):
+                        self.assertNotEqual(pixels[row_start + edge - 1], bg)
+                        self.assertEqual(pixels[row_start + edge], bg)
+                    self.assertNotEqual(pixels[edge - 1], pixels[last_row + edge - 1])
+                    marker_y = (height - cluster.HEIGHT) // 2 + 354
+                    self.assertNotEqual(pixels[marker_y * width + 1728], bg)
 
 
 class StreamTests(unittest.TestCase):
