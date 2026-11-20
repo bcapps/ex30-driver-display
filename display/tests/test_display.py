@@ -131,31 +131,72 @@ class InstrumentTests(unittest.TestCase):
                   "range_m_aaos": 160934.4, "distance_unit": "mi", "battery_power_mw": 7_200_000,
                   "charge_target_pct": 90, "charge_seconds_remaining": 4450}
         self.assertEqual(labels(fields), ["Charging", "100", "mi", "Done in", "1", "h", "15", "min",
-                                           "7.2", "kW", "64", "%", "90%"])
+                                           "7.2", "kW", "64", "%", "90", "%"])
         self.assertEqual(labels({"charging_active": True, "battery_power_mw": -1_000_000,
                                  "charge_target_pct": 150, "charge_seconds_remaining": 0}), ["Charging", "–"])
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600})), [["Done in", "1", "h"]])
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1})), [["Done in", "1", "min"]])
 
-    def test_charging_gradient_fills_panel_height_to_battery_level(self):
-        fields = {"charging_active": True, "soc_aaos": 25, "usable_capacity_wh": 100, "charge_target_pct": 90}
-        width = 1920
-        for height in (480, 1080):
+    @patch("cluster.time.monotonic", lambda: 0)
+    def test_solid_charging_band_and_limit_use_one_scale(self):
+        for width, height in ((1920, 480), (1920, 448), (1280, 720)):
+            face = min(height, width / 4)
+            top = round(height / 2 - 0.29 * face)
+            bottom = round(height / 2 + 0.32 * face)
             for dark in (False, True):
-                with self.subTest(height=height, dark=dark):
-                    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
-                    cluster.draw(cairo.Context(surface), width, height, fields, dark=dark)
+                for charge, limit in ((64, 90), (90, 90), (75, 50), (100, 100)):
+                    with self.subTest(size=(width, height), dark=dark, charge=charge, limit=limit):
+                        fields = {"charging_active": True, "usable_capacity_wh": 100,
+                                  "soc_aaos": charge, "charge_target_pct": limit}
+                        surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
+                        cluster.draw(cairo.Context(surface), width, height, fields, dark=dark)
+                        surface.flush()
+                        pixels = memoryview(surface.get_data()).cast("I")
+
+                        def pixel(x, y):
+                            return pixels[y * width + x] & 0xffffff
+
+                        bg = pixel(0, 0)
+                        green = 0x2b7e49 if dark else 0x9fc593
+                        end = int(1808 / 1920 * width * charge / 100)
+                        marker = int(1808 / 1920 * width * limit / 100)
+                        for y in (top + 2, bottom - 4):
+                            self.assertEqual(pixel(0, y), green)
+                            self.assertEqual(pixel(end - 5, y), green)
+                        self.assertEqual(pixel(end - 1, top + 2), green)
+                        self.assertEqual(pixel(end + 1, top + 2), bg)
+                        self.assertEqual(pixel(0, top - 2), bg)
+                        self.assertEqual(pixel(0, bottom + 1), bg)
+                        self.assertEqual(pixel(marker, bottom - 4), 0xffffff if dark else 0x2e2e2e)
+                        self.assertEqual(pixel(marker, bottom + 1), bg)
+
+    def test_charging_percent_and_limit_label_clear_the_marker(self):
+        for sign_height, descent in ((91, 2), (114, 14)):
+            face = cluster.Lettering(lettering_frame(sign_height, descent))
+            for limit in (50, 90, 100):
+                with self.subTest(sign_height=sign_height, limit=limit):
+                    fields = {"charging_active": True, "soc_aaos": 0, "usable_capacity_wh": 100,
+                              "charge_target_pct": limit}
+                    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 480)
+                    cluster.draw(cairo.Context(surface), 1920, 480, fields, face)
                     surface.flush()
                     pixels = memoryview(surface.get_data()).cast("I")
-                    bg = pixels[width - 1]
-                    edge = width // 4
-                    last_row = (height - 1) * width
-                    for row_start in (0, last_row):
-                        self.assertNotEqual(pixels[row_start + edge - 1], bg)
-                        self.assertEqual(pixels[row_start + edge], bg)
-                    self.assertNotEqual(pixels[edge - 1], pixels[last_row + edge - 1])
-                    marker_y = (height - cluster.HEIGHT) // 2 + 354
-                    self.assertNotEqual(pixels[marker_y * width + 1728], bg)
+                    marker = round(1808 * limit / 100)
+
+                    def ink(left, right, top, bottom):
+                        return [(x, y) for y in range(top, bottom) for x in range(left, right)
+                                if pixels[y * 1920 + x] & 255 < 128]
+
+                    digit = [y for _, y in ink(marker - 200, marker - 64, 130, 290)]
+                    sign = [y for _, y in ink(marker - 64, marker, 130, 290)]
+                    self.assertAlmostEqual((max(sign) - min(sign)) / (max(digit) - min(digit)), 0.25, delta=0.02)
+                    self.assertAlmostEqual(max(sign), max(digit), delta=1)
+                    self.assertFalse(ink(marker, marker + 80, 130, 290))
+                    self.assertFalse(ink(marker - 80, marker - 2, 350, 395))
+                    xs, ys = zip(*ink(marker + 3, min(1920, marker + 112), 350, 395))
+                    self.assertGreaterEqual(min(xs), marker + 10)
+                    self.assertLess(max(xs), 1919)
+                    self.assertAlmostEqual((min(ys) + max(ys)) / 2, 373.5, delta=2)
 
 
 class StreamTests(unittest.TestCase):

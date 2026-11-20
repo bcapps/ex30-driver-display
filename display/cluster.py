@@ -8,6 +8,8 @@ import time
 import cairo
 
 WIDTH, HEIGHT = 1920, 448
+# Room beyond 100% for the charge-limit label. Both readings use this scale.
+CHARGE_TRACK_WIDTH = WIDTH - 112
 # Sampled from Volvo's light and dark EX30 Calm reference images.
 DAY = ("#f0f0f0", "#444444", "#969696", "#d6d6d6", "#c52631", "#22764c")
 NIGHT = ("#2f3744", "#ffffff", "#99a5b3", "#717986", "#ff545b", "#69d99b")
@@ -54,10 +56,8 @@ class Lettering:
         self.zero_ink = self.measure_ink("0", self.speed_row)
         _, digit_height, digit_bottom = self.zero_ink if self.speed_row == 0 else self.measure_ink("0", 0)
         _, sign_height, sign_bottom = self.measure_ink("%", 0)
-        # The EX30 strip's % is about 17 pixels tall beside 23-pixel digits.
-        # Measuring both outlines also accommodates the taller % in older car apps.
-        self.percent_scale = 0.72 * (digit_height / 216) / (sign_height / 128)
-        self.percent_offset = digit_bottom / 216 - self.percent_scale * sign_bottom / 128
+        self.digit_ink = (digit_height / 216, digit_bottom / 216)
+        self.percent_ink = (sign_height / 128, sign_bottom / 128)
 
     def measure_ink(self, label, block):
         index = LABELS.index(label)
@@ -77,7 +77,7 @@ class Lettering:
         baseline = 174 if index < 10 else 150
         return right - left, bottom - ink[0][0], bottom - baseline
 
-    def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
+    def layout(self, text, size, weight):
         labels = (text,) if text in LABELS or text in CHARGING_LABELS else text
         glyphs = []
         for label in labels:
@@ -95,6 +95,12 @@ class Lettering:
             else:
                 return None
             glyphs.append((left, top, baseline, height, scale, advance))
+        return glyphs
+
+    def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
+        glyphs = self.layout(text, size, weight)
+        if glyphs is None:
+            return None
         width = sum(g[-1] for g in glyphs) + tracking * (len(glyphs) - 1)
         ctx.save()
         ctx.translate(x - width * align, y)
@@ -110,6 +116,17 @@ class Lettering:
         return width
 
 
+def text_width(ctx, text, size, lettering=None, weight=0):
+    if lettering is not None:
+        glyphs = lettering.layout(text, size, weight)
+        if glyphs is not None:
+            return sum(g[-1] for g in glyphs)
+    ctx.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL,
+                         cairo.FONT_WEIGHT_BOLD if weight else cairo.FONT_WEIGHT_NORMAL)
+    ctx.set_font_size(size)
+    return ctx.text_extents(text)[4]
+
+
 def paint_text(ctx, text, x, y, size, color, lettering=None, weight=0, align=0):
     set_color(ctx, color)
     if lettering is not None:
@@ -117,10 +134,7 @@ def paint_text(ctx, text, x, y, size, color, lettering=None, weight=0, align=0):
         if width is not None:
             return width
     # Desktop previews, setup messages and words missing from an older car app.
-    ctx.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL,
-                         cairo.FONT_WEIGHT_BOLD if weight else cairo.FONT_WEIGHT_NORMAL)
-    ctx.set_font_size(size)
-    width = ctx.text_extents(text)[4]
+    width = text_width(ctx, text, size, weight=weight)
     ctx.move_to(x - width * align, y)
     ctx.show_text(text)
     return width
@@ -228,12 +242,24 @@ def battery_percent(fields):
     return None
 
 
-def paint_percent(ctx, percent, x, y, size, ink, suffix_ink, lettering, align=0):
-    advance = paint_text(ctx, whole(percent), x, y, size, ink, lettering, align=align)
-    sign_scale = lettering.percent_scale if lettering else 0.72
-    sign_offset = lettering.percent_offset if lettering else 0
-    paint_text(ctx, "%", x + advance * (1 - align) + size * (2 / 39),
-               y + size * sign_offset, size * sign_scale, suffix_ink, lettering)
+class PercentLabel:
+    """A number and a smaller percent sign aligned at the bottom of their ink."""
+    def __init__(self, ctx, value, size, lettering, sign_ratio=0.72):
+        self.text = whole(value)
+        self.size = size
+        self.lettering = lettering
+        digit_height, digit_bottom = lettering.digit_ink if lettering else (0.72, 0)
+        sign_height, sign_bottom = lettering.percent_ink if lettering else (0.72, 0)
+        self.sign_size = size * sign_ratio * digit_height / sign_height
+        self.sign_y = size * digit_bottom - self.sign_size * sign_bottom
+        self.sign_x = text_width(ctx, self.text, size, lettering) + size * (2 / 39)
+        self.width = self.sign_x + text_width(ctx, "%", self.sign_size, lettering)
+        self.baseline_from_center = size * (digit_height / 2 - digit_bottom)
+
+    def paint(self, ctx, x, y, ink, suffix_ink=None):
+        paint_text(ctx, self.text, x, y, self.size, ink, self.lettering)
+        paint_text(ctx, "%", x + self.sign_x, y + self.sign_y, self.sign_size,
+                   suffix_ink or ink, self.lettering)
 
 
 def is_charging(fields):
@@ -267,34 +293,37 @@ def charging_details(fields):
         yield (f"{kw:.1f}".removesuffix(".0") if kw < 10 else whole(kw), "kW")
 
 
-def paint_charging(ctx, fields, lettering, panel_height, dark):
+def paint_charging(ctx, fields, lettering, face_height, dark):
     _, ink, secondary, *_ = NIGHT if dark else DAY
     if not dark:
         ink = "#2e2e2e"
     percent = battery_percent(fields)
+    # In the EX90 illustration the bar runs from 21% to 82% of the instrument face.
+    bar_top = HEIGHT / 2 - 0.29 * face_height
+    bar_height = 0.61 * face_height
+    bar_bottom = bar_top + bar_height
     if percent is not None and percent > 0:
-        # The EX30 artwork fades from the screen colour to sage green at the charge front.
         green = (43, 126, 73) if dark else (159, 197, 147)
-        rgb = tuple(c / 255 for c in green)
         pulse = 0.92 + 0.08 * math.cos(time.monotonic() * math.tau / 4)
-        top = (HEIGHT - panel_height) / 2
-        gradient = cairo.LinearGradient(0, top, 0, top + panel_height)
-        if dark:
-            gradient.add_color_stop_rgba(0, *rgb, 0.22)
-        else:
-            gradient.add_color_stop_rgb(0.18, 240 / 255, 240 / 255, 240 / 255)
-        gradient.add_color_stop_rgba(1, *rgb, pulse)
-        width = WIDTH * percent / 100
-        fade = cairo.LinearGradient(0, 0, width * 0.36, 0)
-        fade.add_color_stop_rgba(0, 0, 0, 0, 0.05)
-        fade.add_color_stop_rgba(1, 0, 0, 0, 1)
-        ctx.save()
-        ctx.rectangle(0, top, width, panel_height)
-        ctx.clip()
-        ctx.set_source(gradient)
-        ctx.mask(fade)
-        ctx.restore()
+        ctx.set_source_rgba(*(c / 255 for c in green), pulse)
+        ctx.rectangle(0, bar_top, CHARGE_TRACK_WIDTH * percent / 100, bar_height)
+        ctx.fill()
 
+    target = number(fields, "charge_target_pct")
+    marker = CHARGE_TRACK_WIDTH * target / 100 if target is not None and 0 <= target <= 100 else None
+    anchor = marker if marker is not None else CHARGE_TRACK_WIDTH
+    # The EX90's large reading has a 21-pixel percent sign beside 85-pixel digits.
+    reading = PercentLabel(ctx, percent, 170, lettering, 0.25) if percent is not None else None
+    reading_width = reading.width if reading else text_width(ctx, "–", 122, lettering)
+    reading_x = anchor - 12 - reading_width
+    if reading_x < 0:
+        reading_x = anchor + 12
+    status_x = min(450, reading_x - 100 - text_width(ctx, "Charging", 99, lettering))
+    if status_x < 120:  # Move the status across when the bolt and heading won't fit comfortably.
+        status_x = max(450, reading_x + reading_width + 96)
+
+    ctx.save()
+    ctx.translate(status_x - 450, 0)
     set_color(ctx, ink)
     ctx.move_to(398, 146)
     for x, y in ((370, 188), (386, 188), (380, 215), (409, 171), (393, 171)):
@@ -305,22 +334,21 @@ def paint_charging(ctx, fields, lettering, panel_height, dark):
     x = 450
     for group in charging_details(fields):
         for token in group:
-            x += paint_text(ctx, token, x, 286, 42, ink, lettering) + 8
+            x += paint_text(ctx, token, x, 297, 42, ink, lettering) + 8
         x += 23
+    ctx.restore()
 
-    if percent is None:
-        paint_text(ctx, "–", 1600, 256, 122, secondary, lettering, align=0.5)
+    if reading:
+        reading.paint(ctx, reading_x, 261, ink)
     else:
-        paint_percent(ctx, percent, 1640, 261, 170, ink, ink, lettering, align=1)
-    target = number(fields, "charge_target_pct")
-    if target is not None and 0 <= target <= 100:
-        marker = max(4, min(WIDTH - 4, WIDTH * target / 100))
-        set_color(ctx, secondary)
-        ctx.rectangle(marker - 1, 333, 2, 37)
+        paint_text(ctx, "–", reading_x, 256, 122, secondary, lettering)
+    if marker is not None:
+        tick_height = 0.083 * face_height
+        set_color(ctx, ink)
+        ctx.rectangle(marker - 1.5, bar_bottom - tick_height, 3, tick_height)
         ctx.fill()
-        align = 1 if marker >= 125 else 0
-        paint_text(ctx, whole(target) + "%", marker + (12 if align == 0 else -12),
-                   362, 36, ink, lettering, align=align)
+        limit = PercentLabel(ctx, target, 32, lettering)
+        limit.paint(ctx, marker + 12, bar_bottom - tick_height / 2 + limit.baseline_from_center, ink)
 
 
 def paint_driving(ctx, fields, lettering, face_height, dark):
@@ -347,7 +375,7 @@ def paint_driving(ctx, fields, lettering, face_height, dark):
     percent = battery_percent(fields)
     if percent is not None:
         battery(ctx, reading_x + 4, 237, percent, ink)
-        paint_percent(ctx, percent, reading_x + 69, 263, 39, reading_ink, secondary, lettering)
+        PercentLabel(ctx, percent, 39, lettering).paint(ctx, reading_x + 69, 263, reading_ink, secondary)
 
     gear = fields.get("gear_selected")
     if gear in ("P", "R", "N", "D"):
@@ -375,11 +403,11 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message=""):
     ctx.save()
     ctx.translate((width - WIDTH * scale) / 2, (height - HEIGHT * scale) / 2)
     ctx.scale(scale, scale)
-    panel_height = height / scale
+    face_height = min(height / scale, WIDTH / 4)
     if charging:
-        paint_charging(ctx, fields, lettering, panel_height, dark)
+        paint_charging(ctx, fields, lettering, face_height, dark)
     else:
-        paint_driving(ctx, fields, lettering, min(panel_height, WIDTH / 4), dark)
+        paint_driving(ctx, fields, lettering, face_height, dark)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:
