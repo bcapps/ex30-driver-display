@@ -1,5 +1,7 @@
 # Setup
 
+Build the Android app and install the Pi kiosk from the same Git revision.
+
 ## Raspberry Pi
 
 Start with 64-bit Raspberry Pi OS Lite, Bluetooth Classic on the Pi, a connected display and working internet for package installation. The installer uses the screen mode selected by Raspberry Pi OS. The layout is designed for a wide panel such as 1920 × 480 and scales uniformly to fit.
@@ -10,7 +12,7 @@ cd ex30-driver-display
 sudo sh display/install.sh
 ```
 
-The installer creates the unprivileged `ex30-display` service user and starts a fullscreen Cage session at boot. The screen shows a name such as **EX30 Display A1B2**. A fresh display is discoverable for three minutes. Restart the display to open a new window if setup takes longer. For an existing installation, pull the new version and rerun the installer.
+The installer creates the unprivileged `ex30-display` service user and starts a fullscreen Cage session at boot. The screen shows a name such as **EX30 Display A1B2**. A fresh display is discoverable for three minutes. Restart the display to open a new window if setup takes longer.
 
 ## Android Automotive
 
