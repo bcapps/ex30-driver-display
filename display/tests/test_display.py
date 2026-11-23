@@ -128,28 +128,32 @@ class InstrumentTests(unittest.TestCase):
 
     def test_active_charging_and_legacy_detection(self):
         plugged = {"charge_port_connected": True, "gear_selected": "P", "speed_display_aaos": 0}
-        self.assertFalse(cluster.is_charging(plugged))
-        self.assertFalse(cluster.is_charging(dict(plugged, battery_power_mw=4_000)))
-        self.assertTrue(cluster.is_charging(dict(plugged, battery_power_mw=1_400_000)))
-        self.assertTrue(cluster.is_charging({"charging_active": True}))
-        self.assertFalse(cluster.is_charging({"battery_power_mw": 22_000_000}))
-        for change in ({"charging_active": False}, {"charge_port_connected": False},
-                       {"gear_selected": "D"}, {"gear_selected": "R"}, {"speed_display_aaos": 0.5}):
-            fields = dict(plugged, battery_power_mw=22_000_000, charging_active=True)
-            fields.update(change)
-            with self.subTest(change=change):
-                self.assertFalse(cluster.is_charging(fields))
+        self.assertEqual(cluster.display_mode(plugged), "plugged")
+        self.assertEqual(cluster.display_mode(dict(plugged, battery_power_mw=4_000)), "plugged")
+        self.assertEqual(cluster.display_mode(dict(plugged, battery_power_mw=1_400_000)), "charging")
+        self.assertEqual(cluster.display_mode(dict(plugged, charging_active=False, battery_power_mw=1_400_000)), "plugged")
+        self.assertEqual(cluster.display_mode({"charging_active": True}), "charging")
+        self.assertEqual(cluster.display_mode({"battery_power_mw": 22_000_000}), "driving")
+        self.assertEqual(cluster.display_mode({"charge_state": "idle", "gear_selected": "P"}), "driving")
+        for state, mode in (("idle", "plugged"), ("charging", "charging"), ("full", "full"), ("fault", "fault")):
+            fields = dict(plugged, charge_state=state, charging_active=True, battery_power_mw=22_000_000)
+            self.assertEqual(cluster.display_mode(fields), mode)
+            for change in ({"charge_port_connected": False}, {"gear_selected": "D"}, {"gear_selected": "R"},
+                           {"gear_selected": "N"}, {"speed_display_aaos": -0.5}):
+                with self.subTest(state=state, change=change):
+                    self.assertEqual(cluster.display_mode(dict(fields, **change)), "driving")
 
     def test_welcome_requires_confirmed_stationary_park_before_driving(self):
         parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
         self.assertEqual(cluster.display_mode(parked), "welcome")
         for changes in ({"before_drive": False}, {"gear_selected": "D"}, {"gear_selected": "R"},
                         {"gear_selected": "N"}, {"gear_selected": "UNKNOWN"}, {"speed_display_aaos": -0.1},
-                        {"speed_display_aaos": None}, {"charge_port_connected": True}):
+                        {"speed_display_aaos": None}):
             with self.subTest(changes=changes):
                 self.assertEqual(cluster.display_mode(dict(parked, **changes)), "driving")
         self.assertEqual(cluster.display_mode({"gear_selected": "P", "speed_display_aaos": 0}), "driving")
         self.assertEqual(cluster.display_mode(dict(parked, charging_active=True)), "charging")
+        self.assertEqual(cluster.display_mode(dict(parked, charge_port_connected=True)), "plugged")
         self.assertEqual(labels(parked), list(cluster.WELCOME_LABELS))
         self.assertEqual(labels(dict(parked, soc_aaos=64, usable_capacity_wh=100,
                                      range_m_aaos=160934.4, distance_unit="mi")),
@@ -237,8 +241,49 @@ class InstrumentTests(unittest.TestCase):
                                            "7.2", "kW", "64", "%", "90", "%"])
         self.assertEqual(labels({"charging_active": True, "battery_power_mw": -1_000_000,
                                  "charge_target_pct": 150, "charge_seconds_remaining": 0}), ["Charging", "–"])
-        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600})), [["Done in", "1", "h"]])
-        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1})), [["Done in", "1", "min"]])
+        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600}, "charging")), [["Done in", "1", "h"]])
+        self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1}, "charging")), [["Done in", "1", "min"]])
+
+    def test_parked_charge_labels_and_fixed_fill(self):
+        fields = dict(charge_port_connected=True, charge_target_pct=80, soc_aaos=80, usable_capacity_wh=100,
+                      charge_seconds_remaining=70, battery_power_mw=7_000_000)
+        for state, title in (("idle", "Plugged in"), ("full", "Target reached"), ("fault", "Charging fault")):
+            sample = dict(fields, charge_state=state)
+            self.assertEqual(labels(sample), [title, "80", "%", "80", "%"])
+            for dark in (True, False):
+                def render(now):
+                    ctx = canvas()
+                    with patch("cluster.time.monotonic", return_value=now):
+                        cluster.draw(ctx, 960, 240, sample, dark=dark)
+                    return bytes(ctx.get_target().get_data())
+                self.assertTrue(render(0) == render(2))
+        self.assertEqual(labels({"charge_state": "fault"}), ["Charging fault", "–"])
+
+    def test_battery_warning_bands_and_vehicle_flag(self):
+        for dark in (False, True):
+            colors = [cluster.battery_ink(p, False, dark) for p in (16, 15, 10, 5)]
+            self.assertEqual(len(set(colors)), 4)
+            self.assertEqual(cluster.battery_ink(80, True, dark), colors[1])
+            self.assertEqual(cluster.battery_ink(5, True, dark), colors[3])
+            self.assertEqual(cluster.battery_ink(0, False, dark), colors[3])
+        self.assertEqual(labels({"battery_low": True}), ["–", "–"])
+
+    def test_temperature_icons_use_independent_conditions(self):
+        fields = dict(soc_aaos=45, usable_capacity_wh=100)
+        for outside, unit, pack, air_icon, pack_icon in (
+                (2.9, "C", 0, True, False), (3, "C", -1, False, True),
+                (2.2, "F", -3, True, True), (2.3, "F", 1, False, False),
+                (None, "C", -4, False, True), (float("nan"), "C", None, False, False)):
+            with self.subTest(outside=outside, unit=unit, pack=pack), patch("cluster.snowflake") as flake:
+                cluster.draw(canvas(), 960, 240, dict(fields, pack_temp_c=pack, outside_temp_c=outside,
+                                                      temperature_unit=unit))
+                rows = [call.args[2] for call in flake.call_args_list]
+                self.assertEqual(402 in rows, air_icon)
+                self.assertEqual(249 in rows, pack_icon)
+        self.assertEqual(labels({"outside_temp_c": -0.2}), ["–", "−1", "°C"])
+        with patch("cluster.snowflake") as flake:
+            cluster.draw(canvas(), 960, 240, {"charge_state": "full", "pack_temp_c": -1})
+            flake.assert_called_once()
 
     @patch("cluster.time.monotonic", lambda: 0)
     def test_solid_charging_band_and_limit_use_one_scale(self):

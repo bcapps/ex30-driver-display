@@ -17,6 +17,8 @@ NIGHT = ("#2f3744", "#ffffff", "#99a5b3", "#717986", "#ff545b", "#69d99b")
 LABELS = tuple("0123456789PRND") + ("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
 CHARGING_LABELS = ("Charging", "Done in", "h", "min", "kW", ".")
 WELCOME_LABELS = ("Hello", "Press the brake and select D or R to start")
+CHARGE_TITLES = {"charging": "Charging", "plugged": "Plugged in", "full": "Target reached", "fault": "Charging fault"}
+STATUS_LABELS = ("Plugged in", "Target reached", "Charging fault", "°C", "°F", "−")
 
 
 def number(fields, key):
@@ -30,8 +32,15 @@ def whole(value):
     return str(math.floor(value + 0.5))
 
 
-def set_color(ctx, color):
-    ctx.set_source_rgb(*(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+def set_color(ctx, color, alpha=1):
+    ctx.set_source_rgba(*(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)), alpha)
+
+
+def lettering_image(encoded, width, height):
+    png = base64.b64decode(encoded, validate=True)
+    if png[:8] != b"\x89PNG\r\n\x1a\n" or png[12:16] != b"IHDR" or png[16:24] != struct.pack(">II", width, height):
+        raise ValueError("Unexpected lettering image size")
+    return cairo.ImageSurface.create_from_png(io.BytesIO(png))
 
 
 class Lettering:
@@ -39,15 +48,18 @@ class Lettering:
     def __init__(self, frame):
         if frame.get("version") != 1 or tuple(frame["labels"]) != LABELS:
             raise ValueError("Unsupported lettering")
-        png = base64.b64decode(frame["png"], validate=True)
-        if png[:8] != b"\x89PNG\r\n\x1a\n" or png[12:16] != b"IHDR" or png[16:24] != struct.pack(">II", 1920, 1536):
-            raise ValueError("Unexpected lettering image size")
+        self.surface = lettering_image(frame["png"], 1920, 1536)
         widths = frame["advances"]
         if (len(widths) != 2 or any(len(row) != len(LABELS) for row in widths)
                 or any(type(w) not in (int, float) or not 0 < w <= 320 for row in widths for w in row)):
             raise ValueError("Invalid label widths")
-        self.surface = cairo.ImageSurface.create_from_png(io.BytesIO(png))
         self.widths = widths
+        self.status_widths = frame.get("statusAdvances")
+        if self.status_widths is not None:
+            if (len(self.status_widths) != len(STATUS_LABELS) or
+                    any(type(w) not in (int, float) or not 0 < w <= 508 for w in self.status_widths)):
+                raise ValueError("Invalid status label widths")
+            self.status_surface = lettering_image(frame["statusPng"], 1536, 192)
         self.charging_widths = frame.get("chargingAdvances")
         if self.charging_widths is not None and (len(self.charging_widths) != len(CHARGING_LABELS) or
                 any(type(w) not in (int, float) or not 0 < w <= 316 for w in self.charging_widths)):
@@ -88,8 +100,8 @@ class Lettering:
             i = WELCOME_LABELS.index(text)
             top, baseline, height, em = ((1440, 67, 69, 88), (1509, 25, 27, 32))[i]
             scale = size / em
-            return [(1280, top, 640, baseline, height, scale, self.welcome_widths[i] * scale)]
-        labels = (text,) if text in LABELS or text in CHARGING_LABELS else text
+            return [(self.surface, 1280, top, 640, baseline, height, scale, self.welcome_widths[i] * scale)]
+        labels = (text,) if text in LABELS or text in CHARGING_LABELS or text in STATUS_LABELS else text
         glyphs = []
         for label in labels:
             if label in LABELS:
@@ -103,9 +115,15 @@ class Lettering:
                 left, top = (4 + i % 2) * 320, i // 4 * 768 + 576 + i // 2 % 2 * 96
                 baseline, height, scale = 74, 96, size / 72
                 advance = self.charging_widths[i] * scale
+            elif self.status_widths and label in STATUS_LABELS:
+                i = STATUS_LABELS.index(label)
+                scale = size / 64
+                glyphs.append((self.status_surface, i % 3 * 512, i // 3 * 96, 512, 72, 96,
+                               scale, self.status_widths[i] * scale))
+                continue
             else:
                 return None
-            glyphs.append((left, top, 320, baseline, height, scale, advance))
+            glyphs.append((self.surface, left, top, 320, baseline, height, scale, advance))
         return glyphs
 
     def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
@@ -115,12 +133,12 @@ class Lettering:
         width = sum(g[-1] for g in glyphs) + tracking * (len(glyphs) - 1)
         ctx.save()
         ctx.translate(x - width * align, y)
-        for left, top, tile_width, baseline, height, scale, advance in glyphs:
+        for surface, left, top, tile_width, baseline, height, scale, advance in glyphs:
             ctx.save()
             ctx.scale(scale, scale)
             ctx.rectangle(-4, -baseline, tile_width, height)
             ctx.clip()
-            ctx.mask_surface(self.surface, -4 - left, -baseline - top)
+            ctx.mask_surface(surface, -4 - left, -baseline - top)
             ctx.restore()
             ctx.translate(advance + tracking, 0)
         ctx.restore()
@@ -182,8 +200,59 @@ def battery(ctx, x, y, percent, ink):
     ctx.rectangle(x, y, 50, 24)
     ctx.stroke()
     ctx.rectangle(x + 52, y + 7, 3, 10)
-    ctx.rectangle(x + 3, y + 3, 44 * percent / 100, 18)
+    if percent is not None:
+        ctx.rectangle(x + 3, y + 3, 44 * percent / 100, 18)
     ctx.fill()
+
+
+def battery_ink(percent, low, dark):
+    level = math.floor(percent + 0.5) if percent is not None else 100
+    if level <= 5:
+        return NIGHT[4] if dark else DAY[4]
+    if level <= 10:
+        return "#ff9956" if dark else "#ac5017"
+    if level <= 15 or low is True:
+        return "#ffbd53" if dark else "#936300"
+    return NIGHT[1] if dark else DAY[1]
+
+
+def snowflake(ctx, x, y, radius, color):
+    # Six spokes, each with a single fork, like the EX30 temperature glyph.
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(radius, radius)
+    set_color(ctx, color)
+    ctx.set_line_width(0.12)
+    ctx.set_line_cap(cairo.LINE_CAP_BUTT)
+    ctx.new_path()
+    for _ in range(6):
+        ctx.move_to(0, 0)
+        ctx.line_to(0, -1)
+        ctx.move_to(-0.24, -0.76)
+        ctx.line_to(0, -0.52)
+        ctx.line_to(0.24, -0.76)
+        ctx.rotate(math.tau / 6)
+    ctx.stroke()
+    ctx.restore()
+
+
+def cold_pack(fields):
+    celsius = number(fields, "pack_temp_c")
+    return celsius is not None and celsius < 0
+
+
+def paint_outside_temperature(ctx, fields, lettering, dark):
+    celsius = number(fields, "outside_temp_c")
+    if celsius is None:
+        return
+    fahrenheit = fields.get("temperature_unit") == "F"
+    degrees = math.floor(celsius * 9 / 5 + 32 if fahrenheit else celsius)
+    color = NIGHT[2] if dark else "#686868"
+    x = 82
+    x += paint_text(ctx, str(degrees).replace("-", "−"), x, 414, 34, color, lettering)
+    x += paint_text(ctx, "°F" if fahrenheit else "°C", x + 3, 414, 32, color, lettering)
+    if degrees <= (35 if fahrenheit else 2):
+        snowflake(ctx, x + 25, 402, 14, color)
 
 
 def parking_brake(ctx, lettering, ink):
@@ -218,21 +287,25 @@ def power_meter(ctx, milliwatts, ink, track, regen):
     ctx.fill()
 
 
-def charge_plug(ctx, ink):
+def charge_plug(ctx, x, y, height, ink):
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(height / 32, height / 32)
     set_color(ctx, ink)
     ctx.set_line_width(3)
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
-    ctx.move_to(39, 390)
-    ctx.line_to(39, 399)
-    ctx.move_to(52, 390)
-    ctx.line_to(52, 399)
-    ctx.move_to(34, 399)
-    ctx.line_to(57, 399)
-    ctx.arc(45.5, 403, 10, 0, math.pi)
+    ctx.new_path()
+    for pin in (-7, 6):
+        ctx.move_to(pin, -16)
+        ctx.line_to(pin, -7)
+    ctx.move_to(-12, -7)
+    ctx.line_to(11, -7)
+    ctx.arc(-0.5, -3, 10, 0, math.pi)
     ctx.close_path()
-    ctx.move_to(46, 413)
-    ctx.line_to(46, 422)
+    ctx.move_to(0, 7)
+    ctx.line_to(0, 16)
     ctx.stroke()
+    ctx.restore()
 
 
 def range_reading(fields):
@@ -274,31 +347,36 @@ class PercentLabel:
                    suffix_ink or ink, self.lettering)
 
 
-def is_charging(fields):
+def display_mode(fields):
     gear = fields.get("gear_selected")
     plugged = fields.get("charge_port_connected")
-    if gear in ("D", "R", "N") or number(fields, "speed_display_aaos") not in (None, 0) or plugged is False:
-        return False
-    active = fields.get("charging_active")
-    if type(active) is bool:
-        return active
-    # Older EX30s expose plug status and signed net pack power. Ignore sub-100 W noise.
-    return plugged is True and gear == "P" and (number(fields, "battery_power_mw") or 0) >= 100_000
-
-
-def display_mode(fields):
-    if is_charging(fields):
-        return "charging"
-    if (fields.get("before_drive") is True and fields.get("gear_selected") == "P"
-            and number(fields, "speed_display_aaos") == 0 and fields.get("charge_port_connected") is not True):
+    speed = number(fields, "speed_display_aaos")
+    if gear in ("D", "R", "N") or speed not in (None, 0):
+        return "driving"
+    if plugged is not False:
+        state = fields.get("charge_state")
+        if state in ("charging", "full", "fault"):
+            return state
+        if state != "idle":
+            active = fields.get("charging_active")  # Older Android senders
+            if active is True:
+                return "charging"
+            if (active is not False and plugged is True and gear == "P"
+                    and (number(fields, "battery_power_mw") or 0) >= 100_000):
+                return "charging"
+        if plugged is True:
+            return "plugged"
+    if fields.get("before_drive") is True and gear == "P" and speed == 0:
         return "welcome"
     return "driving"
 
 
-def charging_details(fields):
+def charging_details(fields, mode):
     distance = range_reading(fields)
     if distance:
         yield distance
+    if mode != "charging":
+        return
     remaining = number(fields, "charge_seconds_remaining")
     if remaining is not None and remaining > 0:
         hours, minutes = divmod(math.ceil(remaining / 60), 60)
@@ -314,7 +392,7 @@ def charging_details(fields):
         yield (f"{kw:.1f}".removesuffix(".0") if kw < 10 else whole(kw), "kW")
 
 
-def paint_charging(ctx, fields, lettering, face_height, dark):
+def paint_charging(ctx, fields, lettering, face_height, dark, mode):
     _, ink, secondary, *_ = NIGHT if dark else DAY
     if not dark:
         ink = "#2e2e2e"
@@ -324,22 +402,47 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
     bar_height = 0.61 * face_height
     bar_bottom = bar_top + bar_height
     if percent is not None and percent > 0:
-        # The daytime shade keeps Volvo's green hue and lifts its brightness for dark text.
-        green = (43, 126, 73) if dark else (58, 170, 98)
-        pulse = 0.92 + 0.08 * math.cos(time.monotonic() * math.tau / 4)
-        ctx.set_source_rgba(*(c / 255 for c in green), pulse)
+        fill = "#2b7e49" if dark else "#3aaa62"
+        if mode == "plugged":
+            fill = "#626c78" if dark else "#d1d4d5"
+        elif mode == "fault":
+            fill = "#9e2a2b" if dark else "#e98989"
+        alpha = 0.92 + 0.08 * math.cos(time.monotonic() * math.tau / 4) if mode == "charging" else 1
+        set_color(ctx, fill, alpha)
         ctx.rectangle(0, bar_top, CHARGE_TRACK_WIDTH * percent / 100, bar_height)
         ctx.fill()
 
     set_color(ctx, ink)
-    ctx.move_to(398, 146)
-    for x, y in ((370, 188), (386, 188), (380, 215), (409, 171), (393, 171)):
-        ctx.line_to(x, y)
-    ctx.close_path()
-    ctx.fill()
-    paint_text(ctx, "Charging", 450, 218, 99, ink, lettering)
+    if mode == "charging":
+        ctx.move_to(398, 146)
+        for x, y in ((370, 188), (386, 188), (380, 215), (409, 171), (393, 171)):
+            ctx.line_to(x, y)
+        ctx.close_path()
+        ctx.fill()
+    elif mode == "plugged":
+        charge_plug(ctx, 390, 181, 54, ink)
+    elif mode == "full":
+        ctx.set_line_width(5)
+        ctx.move_to(367, 182)
+        ctx.line_to(382, 197)
+        ctx.line_to(413, 163)
+        ctx.stroke()
+    else:  # Charging fault
+        ctx.set_line_width(3.5)
+        ctx.set_line_join(cairo.LINE_JOIN_ROUND)
+        ctx.move_to(390, 153)
+        ctx.line_to(419, 204)
+        ctx.line_to(361, 204)
+        ctx.close_path()
+        ctx.stroke()
+        ctx.move_to(390, 170)
+        ctx.line_to(390, 187)
+        ctx.stroke()
+        ctx.arc(390, 195, 2.4, 0, math.tau)
+        ctx.fill()
+    paint_text(ctx, CHARGE_TITLES[mode], 450, 218, 99, ink, lettering)
     x = 450
-    for group in charging_details(fields):
+    for group in charging_details(fields, mode):
         for token in group:
             x += paint_text(ctx, token, x, 297, 42, ink, lettering) + 8
         x += 23
@@ -351,6 +454,8 @@ def paint_charging(ctx, fields, lettering, face_height, dark):
     else:
         reading = PercentLabel(ctx, percent, 170, lettering, 0.25)
         reading.paint(ctx, reading_right - reading.width, 261, ink)
+    if cold_pack(fields):
+        snowflake(ctx, reading_right + 32, 248, 17, ink)
 
     target = number(fields, "charge_target_pct")
     if target is not None and 0 <= target <= 100:
@@ -376,9 +481,19 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
         paint_text(ctx, unit, reading_x + advance + 5, 202, 33, reading_ink, lettering)
 
     percent = battery_percent(fields)
-    if percent is not None:
-        battery(ctx, reading_x + 4, 237, percent, ink)
-        PercentLabel(ctx, percent, 39, lettering).paint(ctx, reading_x + 69, 263, reading_ink, secondary)
+    low = fields.get("battery_low")
+    cold = cold_pack(fields)
+    if percent is not None or low is True or cold:
+        battery(ctx, reading_x + 4, 237, percent, battery_ink(percent, low, dark))
+        x = reading_x + 69
+        if percent is None:
+            x += paint_text(ctx, "–", x, 263, 39, reading_ink, lettering)
+        else:
+            label = PercentLabel(ctx, percent, 39, lettering)
+            label.paint(ctx, x, 263, reading_ink, secondary)
+            x += label.width
+        if cold:
+            snowflake(ctx, x + 24, 249, 14, reading_ink)
 
 
 def paint_welcome(ctx, fields, lettering, dark):
@@ -409,7 +524,7 @@ def paint_driving(ctx, fields, lettering, face_height, dark):
     if power is not None:
         power_meter(ctx, power, ink, track, regen)
     if fields.get("charge_port_connected") is True:
-        charge_plug(ctx, secondary)
+        charge_plug(ctx, 46, 406, 32, secondary)
 
 
 class FaceTransition:
@@ -452,7 +567,7 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
     bg, _, secondary, _, brake, _ = NIGHT if dark else DAY
     mode = display_mode(fields)
     progress = transition.progress(mode, fields) if transition else 1
-    if mode == "charging" and not dark:
+    if mode in CHARGE_TITLES and not dark:
         bg = "#ebebeb"
     set_color(ctx, bg)
     ctx.paint()
@@ -463,8 +578,8 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
     ctx.translate((width - WIDTH * scale) / 2, (height - HEIGHT * scale) / 2)
     ctx.scale(scale, scale)
     face_height = min(height / scale, WIDTH / 4)
-    if mode == "charging":
-        fade(ctx, progress, paint_charging, fields, lettering, face_height, dark)
+    if mode in CHARGE_TITLES:
+        fade(ctx, progress, paint_charging, fields, lettering, face_height, dark, mode)
     elif mode == "welcome":
         fade(ctx, progress, paint_welcome, fields, lettering, dark)
     else:
@@ -480,6 +595,7 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
             fade(ctx, transition.departure, paint_welcome, transition.welcome_fields, lettering, dark)
             ctx.pop_group_to_source()
             ctx.paint_with_alpha(1 - progress)
+    paint_outside_temperature(ctx, fields, lettering, dark)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:

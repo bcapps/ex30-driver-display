@@ -15,7 +15,7 @@ EXAMPLE = {
 }
 
 CHARGING_EXAMPLE = {
-    "charging_active": True, "charge_port_connected": True,
+    "charge_state": "charging", "charge_port_connected": True,
     "gear_selected": "P", "speed_display_aaos": 0,
     "soc_aaos": 96000, "usable_capacity_wh": 150000,
     "range_m_aaos": 384000, "distance_unit": "km", "battery_power_mw": 22_000_000,
@@ -29,11 +29,16 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--lettering", type=Path, help="Lettering frame from an AAOS test session")
     modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--charging", action="store_true", help="Show the parked, actively charging display")
+    modes.add_argument("--charging", nargs="?", const="charging", choices=("charging", "idle", "full", "fault"),
+                       help="Show a parked charging state (defaults to active charging)")
     modes.add_argument("--welcome", action="store_true", help="Show the pre-drive greeting")
     args = parser.parse_args()
     face = Lettering(json.loads(args.lettering.read_bytes())) if args.lettering else None
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 480)
-    fields = CHARGING_EXAMPLE if args.charging else dict(EXAMPLE, before_drive=args.welcome)
+    fields = dict(EXAMPLE, before_drive=args.welcome)
+    if args.charging:
+        fields = dict(CHARGING_EXAMPLE, charge_state=args.charging)
+        if args.charging == "full":
+            fields["soc_aaos"] = fields["usable_capacity_wh"] * fields["charge_target_pct"] / 100
     draw(cairo.Context(surface), 1920, 480, fields, face, dark=args.mode == "night")
     surface.write_to_png(str(args.output))
