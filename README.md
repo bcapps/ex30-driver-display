@@ -5,7 +5,7 @@ A Bluetooth instrument display for the Volvo EX30. A read-only Android Automotiv
 ![Day preview with range and battery charge on the left, a centred speed of zero, and Park selected on the right](docs/calm-day.png)
 ![Night preview of the same instruments](docs/calm-night.png)
 
-The screenshots come from the running Pi kiosk on a 1920 × 480 virtual screen. Speed uses **Volvo Novum Regular with tabular lining digits** when available. The EX30 emulator ships Novum Regular 2.001 at `/product/fonts/VolvoNovum-Regular.ttf`. The launcher and System UI contain identical copies. Its tabular 8 and 0 are 530 and 510 font units wide and both are 712 units tall. At the 139-pixel height in Volvo’s published EX30 Calm view, those outlines predict widths of 103.5 and 99.6 pixels. The image measures 104 and 100. The 12-pixel gap comes from the image. The factory screen’s exact text-style declaration on retail 2.x remains unverified. [Volvo’s EX30 Calm view](https://www.volvocars.com/uk/cars/ex30-electric/features/) · [Volvo’s archived EX30 emulator catalog](https://web.archive.org/web/20260903221015id_/https://developer.volvocars.com/sdk/volvo-sys-img.xml)
+The two previews above come from the running Pi kiosk on a 1920 × 480 virtual screen. Speed uses **Volvo Novum Regular with tabular lining digits** when available. The EX30 emulator ships Novum Regular 2.001 at `/product/fonts/VolvoNovum-Regular.ttf`. The launcher and System UI contain identical copies. Its tabular 8 and 0 are 530 and 510 font units wide and both are 712 units tall. At the 139-pixel height in Volvo’s published EX30 Calm view, those outlines predict widths of 103.5 and 99.6 pixels. The image measures 104 and 100. The 12-pixel gap comes from the image. The factory screen’s exact text-style declaration on retail 2.x remains unverified. [Volvo’s EX30 Calm view](https://www.volvocars.com/uk/cars/ex30-electric/features/) · [Volvo’s archived EX30 emulator catalog](https://web.archive.org/web/20260903221015id_/https://developer.volvocars.com/sdk/volvo-sys-img.xml)
 
 Speed is centred and occupies about 34% of the wide panel’s height, following the EX90 photograph. Its digit width and spacing follow the EX30 top strip. The gear column uses Novum SemiLight and Medium. [Volvo’s EX90 photograph, p. 43](https://www.volvocars-news.ch/wp-content/uploads/2022/12/Volvo_FTM_2_2022_DE.pdf#page=43)
 
@@ -27,7 +27,8 @@ No Wi-Fi password, camera, OBD adapter or internet connection is needed for the 
 | --- | --- |
 | Speed | Calibrated display speed from the EX30. The unit follows the car’s exposed preference. |
 | Range | The car’s remaining-range estimate in miles or kilometres. Distance and speed units are independent. |
-| Battery | Percentage calculated from remaining energy and usable capacity, with nominal capacity as a fallback. Volvo can round or reserve energy differently. |
+| Battery | Percentage calculated from remaining energy and usable capacity, with nominal capacity as a fallback. The battery icon changes from neutral to amber at 15%, orange at 10%, and red at 5%. The car’s low-energy flag can also turn it amber. |
+| Temperature | An outside reading appears at the lower left, with a snowflake at a displayed 35°F or 2°C and below. A separate snowflake beside the battery percentage appears when the reported pack temperature falls below freezing. |
 | Gear and parking brake | The selected P, R, N or D is highlighted. The red parking-brake symbol follows its own switch. |
 | Power and charging | A signed battery-power bar estimates draw and regeneration. A plug appears when the cable is connected. The factory meter’s available-power limits and friction-brake section require more signals. |
 | Day and night | The app sends AAOS’s current appearance, including changes while the setup screen is closed. The cabin night flag is a fallback. |
@@ -44,7 +45,7 @@ Selecting D, R or N, or detecting motion, starts a 320 ms crossfade. The greetin
 
 The small odometer in the reference is omitted. The archived EX30 image declares only the privileged mileage permission. Newer Android versions also define a third-party mileage permission. [Android odometer property](https://developer.android.com/reference/android/car/VehiclePropertyIds#PERF_ODOMETER)
 
-## Active charging
+## Charging
 
 ![Charging at 64 percent, with 384 km of range, 1 h 15 min remaining, 22 kW into the battery, and a 90 percent target](docs/charging-day.png)
 
@@ -56,11 +57,19 @@ The light grey background comes from the EX30 emulator’s built-in manual. Its 
 
 The signed Android emulator image was built May 15, 2025. Its configured cluster APK labels itself “Fake Cluster Implementation” and displays Android’s sample instruments. The day and night gradient drawables in `XCSettings2_Gecko.apk` belong to the center-screen charging settings. The production EX30 top strip’s fill and animation on software 1.8 and 2.x remain unverified. [Android’s sample cluster service](https://source.android.com/docs/automotive/displays/cluster_api) · [Volvo’s software release dates](https://www.volvocars.com/uk/support/car/ex30/software-release-notes/)
 
-The Pi shows “Done in” using the car’s remaining-time estimate and shows the limit when the car reports one. The kW figure is net power going into the battery. The car’s reported charging state takes precedence. On cars that omit it, the display requires Park, a connected plug and at least 100 W of net charging power. Known motion or a driving gear selects the driving view. A plugged-in car that reports idle, full or fault stays on the parked driving view with the plug indicator. [Charging signals and availability](ex30-companion-aaos/docs/properties.md)
+The same parked layout shows **Plugged in** with a neutral bar, **Target reached** with steady green, and **Charging fault** with steady red. The target can be below 100%. Completion and fault each require an explicit report from the car. A connected cable alone qualifies for the neutral state. Only active charging pulses and shows net kW and the available time estimate. Selecting D, R or N or detecting motion restores the instruments immediately. [Charging signals and availability](ex30-companion-aaos/docs/properties.md)
+
+Volvo documents low-charge warnings at 15%, 10%, 5%, and 0%. The amber, orange and red bands are this display’s interpretation of those milestones. The pack snowflake uses Android’s average battery temperature and Volvo’s published freezing threshold. Volvo’s factory sensor selection and exact low-charge colors on a retail 2.x strip remain unverified. [EX30 release notes](https://www.volvocars.com/us/support/car/ex30/software-release-notes/) · [Volvo’s cold-battery indicator](https://www.volvocars.com/us/support/car/ex30/article/f558786dce01385ec0a8b04a5cd4f99b-382ed7f148ede59fc0a8004a48515dfc-d5ea19374a848da4c0a8b097474f8a2b/)
+
+These 1280 × 400 kiosk captures use readings sent over Bluetooth from Google’s Android 15 Automotive emulator. Light mode is on the left. In the driving examples, the first row has cold air, the second has a cold pack, and the third has both. [Battery and temperature detail](docs/battery-temperature-detail.png)
+
+![Driving with amber at 15%, orange at 10%, and red at 5%, with separate outside and battery snowflakes](docs/battery-temperature-states.png)
+
+![Plugged in at 64%, target reached at 80%, and a charging fault at 42% in light and dark mode](docs/parked-charge-states.png)
 
 ## Verification
 
-Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display switched to charging when the car reported an active session, followed day/night changes, and returned to the parked view when charging finished with the cable still connected. It also recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens. Current and earlier lettering frames both render. Charging-property availability on a retail EX30, its Bluetooth policy, the Pi’s radio and the attached panel still need a hardware test. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
+Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display followed active charging and day/night changes. It also recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens. Current and earlier lettering frames both render. Charging-state and pack-temperature availability on a retail EX30, its Bluetooth policy, the Pi’s radio and the attached panel still need a hardware test. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
 
 The welcome flow was also exercised over the paired virtual radios. Selecting a driving gear dismissed the greeting, reconnecting in Park kept the driving instruments, and an ignition sleep/wake cycle restored the greeting. The welcome screenshots and animation come from the Linux kiosk replaying those Android readings and rendered Novum lettering.
 

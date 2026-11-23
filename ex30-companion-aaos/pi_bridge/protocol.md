@@ -14,7 +14,13 @@ Each subsequent frame has type `state` and a complete `fields` object. This samp
 
 Missing fields clear the previous value. Numeric fields carry m/s, metres, Wh or mW as described in the property table. The selected gear is a letter. Switches are booleans. A positive normalized power value means charging or regeneration. [Field sources](../docs/properties.md) · [Android wire mapping](../app/src/main/java/com/ex30companion/WireFieldMapper.kt)
 
-Charging-capable senders also supply `charging_active` when the car reports a known charge state, `charge_target_pct` for the selected limit, and `charge_seconds_remaining` for its estimate. Each is optional. The lettering frame can include `chargingAdvances` for `Charging`, `Done in`, `h`, `min`, `kW`, and the decimal point in that order. They occupy 320 × 96 px tiles in the last two columns of the bottom row of each block, left to right then top to bottom, at a 72 px em and a 74 px baseline. Earlier receivers ignore these cells. New receivers use local text for charging words missing from older senders.
+`charge_state` carries `idle`, `charging`, `full` or `fault` when the car reports a known state. Senders also supply `charging_active` for earlier receivers. `charge_port_connected` reports the cable independently, `charge_target_pct` is the selected limit, and `charge_seconds_remaining` is the estimated time remaining. Each field is optional.
+
+`outside_temp_c` and `pack_temp_c` carry independent readings in degrees Celsius. `temperature_unit` is `C` or `F` and applies to the displayed outside reading. `battery_low` carries the vehicle’s low-energy flag. An unavailable reading is omitted from the snapshot.
+
+The lettering frame can include `chargingAdvances` for `Charging`, `Done in`, `h`, `min`, `kW`, and the decimal point in that order. They occupy 320 × 96 px tiles in the last two columns of the bottom row of each block, left to right then top to bottom, at a 72 px em and a 74 px baseline. New receivers use local text for labels missing from older senders.
+
+Optional `statusPng` and `statusAdvances` supply `Plugged in`, `Target reached`, `Charging fault`, `°C`, `°F` and `−` in that order. The separate transparent PNG is 1536 × 192 px, arranged in three columns of 512 × 96 px cells. Each label starts at x = 4 with its baseline at y = 72 inside the cell. Earlier receivers use the original lettering image.
 
 The optional boolean `before_drive` means the sender has yet to observe a driving gear or motion since waking. The Pi also requires Park and zero speed for the welcome face. An absent flag selects the existing driving or charging face. Optional `welcomeAdvances` contains the widths of “Hello” and “Press the brake and select D or R to start”. Both use the last 640 × 96 px strip of the existing atlas, starting at x = 1284. Their baselines are y = 1507 and 1534 at 88 and 32 px respectively.
 
