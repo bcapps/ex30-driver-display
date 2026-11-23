@@ -40,7 +40,10 @@ class ParkedModeMonitor(private val context: Context, scope: CoroutineScope) {
     private fun update(values: Map<Int, Any>) {
         val ignition = values[VehiclePropertyIds.IGNITION_STATE] as? Int
         val connected = values[VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED] as? Boolean
-            ?: (values[VehiclePropertyIds.EV_CHARGE_STATE] == EvChargeState.STATE_CHARGING)
+            ?: when (values[VehiclePropertyIds.EV_CHARGE_STATE]) {
+                EvChargeState.STATE_CHARGING, EvChargeState.STATE_FULLY_CHARGED, EvChargeState.STATE_ERROR -> true
+                else -> false
+            }
         val resting = !screenOn || ignition in 1..3
         val gear = values[VehiclePropertyIds.GEAR_SELECTION] as? Int
         val speed = (values[VehiclePropertyIds.PERF_VEHICLE_SPEED_DISPLAY] as? Number)?.toFloat()

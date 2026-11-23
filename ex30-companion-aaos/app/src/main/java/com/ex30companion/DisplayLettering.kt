@@ -21,11 +21,18 @@ object DisplayLettering {
     private val labels = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "P", "R", "N", "D", "km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
     private val chargingLabels = listOf("Charging", "Done in", "h", "min", "kW", ".")
     private val welcomeLabels = listOf("Hello", "Press the brake and select D or R to start")
+    private val statusLabels = listOf("Plugged in", "Target reached", "Charging fault", "°C", "°F", "−")
     private fun novum(weight: String) =
         Typeface.create("VolvoNovum-$weight", Typeface.NORMAL).takeUnless { it == Typeface.DEFAULT }
 
     private fun inter(assets: AssetManager, weight: Int) = Typeface.Builder(assets, "InterVariable.ttf")
         .setFontVariationSettings("'wght' $weight").build()
+
+    private fun Bitmap.encodedPng(): String = ByteArrayOutputStream().use {
+        compress(Bitmap.CompressFormat.PNG, 100, it)
+        recycle()
+        Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP)
+    }
 
     fun frame(assets: AssetManager): String {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
@@ -83,13 +90,19 @@ object DisplayLettering {
             canvas.drawText(label, (4 * CELL + 4).toFloat(), if (i == 0) 1507f else 1534f, paint)
             welcomeWidths.put(paint.measureText(label).toDouble())
         }
-        val png = ByteArrayOutputStream().use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-            it.toByteArray()
+        // Keep the original atlas readable by older displays.
+        val statusBitmap = Bitmap.createBitmap(1536, 192, Bitmap.Config.ARGB_8888)
+        val statusCanvas = Canvas(statusBitmap)
+        val statusWidths = JSONArray()
+        paint.textSize = 64f
+        for ((i, label) in statusLabels.withIndex()) {
+            paint.typeface = if (i < 3) speedFace else readingFace
+            statusCanvas.drawText(label, (i % 3 * 512 + 4).toFloat(), (i / 3 * 96 + 72).toFloat(), paint)
+            statusWidths.put(paint.measureText(label).toDouble())
         }
-        bitmap.recycle()
         return JSONObject().put("type", "lettering").put("version", 1).put("speedRow", 1)
             .put("labels", JSONArray(labels)).put("advances", widths).put("chargingAdvances", chargingWidths)
-            .put("welcomeAdvances", welcomeWidths).put("png", Base64.encodeToString(png, Base64.NO_WRAP)).toString()
+            .put("welcomeAdvances", welcomeWidths).put("png", bitmap.encodedPng())
+            .put("statusAdvances", statusWidths).put("statusPng", statusBitmap.encodedPng()).toString()
     }
 }

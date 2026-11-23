@@ -26,6 +26,14 @@ object WireFieldMapper {
             }
             VehiclePropertyIds.EV_CURRENT_BATTERY_CAPACITY ->
                 Wire("usable_capacity_wh", (raw as Number).toFloat())
+            VehiclePropertyIds.HVAC_TEMPERATURE_DISPLAY_UNITS -> when (raw) {
+                VehicleUnit.CELSIUS -> Wire("temperature_unit", "C")
+                VehicleUnit.FAHRENHEIT -> Wire("temperature_unit", "F")
+                else -> null
+            }
+            VehiclePropertyIds.ENV_OUTSIDE_TEMPERATURE -> Wire("outside_temp_c", raw as Float)
+            VehiclePropertyIds.EV_BATTERY_AVERAGE_TEMPERATURE -> Wire("pack_temp_c", raw as Float)
+            VehiclePropertyIds.FUEL_LEVEL_LOW -> Wire("battery_low", raw as Boolean)
             VehiclePropertyIds.PERF_VEHICLE_SPEED_DISPLAY ->
                 Wire("speed_display_aaos", (raw as Number).toFloat())
             VehiclePropertyIds.EV_BATTERY_LEVEL ->
@@ -48,9 +56,10 @@ object WireFieldMapper {
             VehiclePropertyIds.EV_CHARGE_PORT_CONNECTED ->
                 Wire("charge_port_connected", raw as Boolean)
             VehiclePropertyIds.EV_CHARGE_STATE -> when (raw) {
-                EvChargeState.STATE_CHARGING -> Wire("charging_active", true)
-                EvChargeState.STATE_NOT_CHARGING, EvChargeState.STATE_FULLY_CHARGED,
-                EvChargeState.STATE_ERROR -> Wire("charging_active", false)
+                EvChargeState.STATE_CHARGING -> Wire("charge_state", "charging")
+                EvChargeState.STATE_NOT_CHARGING -> Wire("charge_state", "idle")
+                EvChargeState.STATE_FULLY_CHARGED -> Wire("charge_state", "full")
+                EvChargeState.STATE_ERROR -> Wire("charge_state", "fault")
                 else -> null
             }
             VehiclePropertyIds.EV_CHARGE_PERCENT_LIMIT -> Wire("charge_target_pct", (raw as Number).toFloat())
