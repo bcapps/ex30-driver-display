@@ -4,6 +4,7 @@ import io
 import math
 import struct
 import time
+from typing import NamedTuple
 
 import cairo
 
@@ -14,11 +15,15 @@ CHARGE_TRACK_WIDTH = WIDTH - 112
 # Sampled from Volvo's light and dark EX30 Calm reference images.
 DAY = ("#f0f0f0", "#444444", "#969696", "#d6d6d6", "#c52631", "#22764c")
 NIGHT = ("#2f3744", "#ffffff", "#99a5b3", "#717986", "#ff545b", "#69d99b")
-LABELS = tuple("0123456789PRND") + ("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
-CHARGING_LABELS = ("Charging", "Done in", "h", "min", "kW", ".")
+DIGITS_AND_GEARS = tuple("0123456789PRND")
+READINGS = DIGITS_AND_GEARS + ("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
 WELCOME_LABELS = ("Hello", "Press the brake and select D or R to start")
 CHARGE_TITLES = {"charging": "Charging", "plugged": "Plugged in", "full": "Target reached", "fault": "Charging fault"}
-STATUS_LABELS = ("Plugged in", "Target reached", "Charging fault", "°C", "°F", "−")
+CAPTIONS = (
+    ("Charging", 72), ("Done in", 72), ("h", 72), ("min", 72), ("kW", 72), (".", 72),
+    (WELCOME_LABELS[0], 88), (WELCOME_LABELS[1], 32),
+    ("Plugged in", 64), ("Target reached", 64), ("Charging fault", 64), ("°C", 64), ("°F", 64), ("−", 64),
+)
 
 
 def number(fields, key):
@@ -36,120 +41,88 @@ def set_color(ctx, color, alpha=1):
     ctx.set_source_rgba(*(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)), alpha)
 
 
-def lettering_image(encoded, width, height):
-    png = base64.b64decode(encoded, validate=True)
-    if png[:8] != b"\x89PNG\r\n\x1a\n" or png[12:16] != b"IHDR" or png[16:24] != struct.pack(">II", width, height):
-        raise ValueError("Unexpected lettering image size")
-    return cairo.ImageSurface.create_from_png(io.BytesIO(png))
+class Glyph(NamedTuple):
+    x: int
+    y: int
+    width: int
+    height: int
+    baseline: int
+    em: int
+    advance: float
 
 
 class Lettering:
     """Monochrome text painted by Android. No font software is sent to the Pi."""
     def __init__(self, frame):
-        if frame.get("version") != 1 or tuple(frame["labels"]) != LABELS:
+        if frame.get("version") != 2:
             raise ValueError("Unsupported lettering")
-        self.surface = lettering_image(frame["png"], 1920, 1536)
-        widths = frame["advances"]
-        if (len(widths) != 2 or any(len(row) != len(LABELS) for row in widths)
-                or any(type(w) not in (int, float) or not 0 < w <= 320 for row in widths for w in row)):
-            raise ValueError("Invalid label widths")
-        self.widths = widths
-        self.status_widths = frame.get("statusAdvances")
-        if self.status_widths is not None:
-            if (len(self.status_widths) != len(STATUS_LABELS) or
-                    any(type(w) not in (int, float) or not 0 < w <= 508 for w in self.status_widths)):
-                raise ValueError("Invalid status label widths")
-            self.status_surface = lettering_image(frame["statusPng"], 1536, 192)
-        self.charging_widths = frame.get("chargingAdvances")
-        if self.charging_widths is not None and (len(self.charging_widths) != len(CHARGING_LABELS) or
-                any(type(w) not in (int, float) or not 0 < w <= 316 for w in self.charging_widths)):
-            raise ValueError("Invalid charging label widths")
-        self.welcome_widths = frame.get("welcomeAdvances")
-        if self.welcome_widths is not None and (len(self.welcome_widths) != len(WELCOME_LABELS) or
-                any(type(w) not in (int, float) or not 0 < w <= 636 for w in self.welcome_widths)):
-            raise ValueError("Invalid welcome label widths")
-        self.speed_row = frame.get("speedRow", 0)
-        if type(self.speed_row) is not int or self.speed_row not in (0, 1):
-            raise ValueError("Invalid speed lettering row")
-        self.zero_ink = self.measure_ink("0", self.speed_row)
-        _, digit_height, digit_bottom = self.zero_ink if self.speed_row == 0 else self.measure_ink("0", 0)
-        _, sign_height, sign_bottom = self.measure_ink("%", 0)
+        instruments = READINGS + DIGITS_AND_GEARS
+        advances = frame["advances"]
+        if len(advances) != len(instruments) + len(CAPTIONS) or any(
+                type(w) not in (int, float) or not 0 < w <= (316 if i < len(instruments) else 636)
+                for i, w in enumerate(advances)):
+            raise ValueError("Invalid lettering advances")
+        caption_top = (len(instruments) + 5) // 6 * 192
+        height = caption_top + (len(CAPTIONS) + 2) // 3 * 96
+        png = base64.b64decode(frame["png"], validate=True)
+        if png[:8] != b"\x89PNG\r\n\x1a\n" or png[12:16] != b"IHDR" or png[16:24] != struct.pack(">II", 1920, height):
+            raise ValueError("Unexpected lettering image size")
+        self.surface = cairo.ImageSurface.create_from_png(io.BytesIO(png))
+        normal, selected = {}, {}
+        for i, label in enumerate(instruments):
+            face = normal if i < len(READINGS) else selected
+            baseline, em = (174, 216) if label.isdigit() else (150, 128)
+            face[label] = Glyph(i % 6 * 320, i // 6 * 192, 320, 192, baseline, em, advances[i])
+        for i, (label, em) in enumerate(CAPTIONS):
+            normal[label] = Glyph(i % 3 * 640, caption_top + i // 3 * 96, 640, 96, 72, em, advances[len(instruments) + i])
+        self.faces = (normal, normal | selected)
+        self.zero_ink = self.measure_ink(selected["0"])
+        _, digit_height, digit_bottom = self.measure_ink(normal["0"])
+        _, sign_height, sign_bottom = self.measure_ink(normal["%"])
         self.digit_ink = (digit_height / 216, digit_bottom / 216)
         self.percent_ink = (sign_height / 128, sign_bottom / 128)
 
-    def measure_ink(self, label, block):
-        index = LABELS.index(label)
-        tile = cairo.ImageSurface(cairo.FORMAT_A8, 320, 192)
+    def measure_ink(self, glyph):
+        tile = cairo.ImageSurface(cairo.FORMAT_A8, glyph.width, glyph.height)
         ctx = cairo.Context(tile)
-        ctx.set_source_surface(self.surface, -(index % 6) * 320, -block * 768 - index // 6 * 192)
+        ctx.set_source_surface(self.surface, -glyph.x, -glyph.y)
         ctx.paint()
         tile.flush()
         mask = bytes(tile.get_data()).translate(bytes(128) + b"\xff" * 128)
-        rows = [mask[y:y + 320] for y in range(0, len(mask), tile.get_stride())]
+        rows = [mask[y:y + glyph.width] for y in range(0, len(mask), tile.get_stride())]
         ink = [(y, row.find(b"\xff"), row.rfind(b"\xff")) for y, row in enumerate(rows) if b"\xff" in row]
         if not ink:
-            raise ValueError(f"Missing lettering for {label}")
+            raise ValueError("Empty instrument glyph")
         left = min(left for _, left, _ in ink)
         right = max(right for _, _, right in ink) + 1
         bottom = ink[-1][0] + 1
-        baseline = 174 if index < 10 else 150
-        return right - left, bottom - ink[0][0], bottom - baseline
+        return right - left, bottom - ink[0][0], bottom - glyph.baseline
 
-    def layout(self, text, size, weight):
-        if self.welcome_widths and text in WELCOME_LABELS:
-            i = WELCOME_LABELS.index(text)
-            top, baseline, height, em = ((1440, 67, 69, 88), (1509, 25, 27, 32))[i]
-            scale = size / em
-            return [(self.surface, 1280, top, 640, baseline, height, scale, self.welcome_widths[i] * scale)]
-        labels = (text,) if text in LABELS or text in CHARGING_LABELS or text in STATUS_LABELS else text
-        glyphs = []
-        for label in labels:
-            if label in LABELS:
-                i = LABELS.index(label)
-                left, top = i % 6 * 320, weight * 768 + i // 6 * 192
-                baseline, height = (174 if i < 10 else 150), 192
-                scale = size / (216 if i < 10 else 128)
-                advance = self.widths[weight][i] * scale
-            elif self.charging_widths and label in CHARGING_LABELS:
-                i = CHARGING_LABELS.index(label)
-                left, top = (4 + i % 2) * 320, i // 4 * 768 + 576 + i // 2 % 2 * 96
-                baseline, height, scale = 74, 96, size / 72
-                advance = self.charging_widths[i] * scale
-            elif self.status_widths and label in STATUS_LABELS:
-                i = STATUS_LABELS.index(label)
-                scale = size / 64
-                glyphs.append((self.status_surface, i % 3 * 512, i // 3 * 96, 512, 72, 96,
-                               scale, self.status_widths[i] * scale))
-                continue
-            else:
-                return None
-            glyphs.append((self.surface, left, top, 320, baseline, height, scale, advance))
-        return glyphs
+    def glyphs(self, text, weight):
+        face = self.faces[weight]
+        return [face[text]] if text in face else [face[char] for char in text]
 
     def draw(self, ctx, text, x, y, size, weight, align, tracking=0):
-        glyphs = self.layout(text, size, weight)
-        if glyphs is None:
-            return None
-        width = sum(g[-1] for g in glyphs) + tracking * (len(glyphs) - 1)
+        glyphs = self.glyphs(text, weight)
+        width = sum(g.advance * (size / g.em) for g in glyphs) + tracking * (len(glyphs) - 1)
         ctx.save()
         ctx.translate(x - width * align, y)
-        for surface, left, top, tile_width, baseline, height, scale, advance in glyphs:
+        for glyph in glyphs:
+            scale = size / glyph.em
             ctx.save()
             ctx.scale(scale, scale)
-            ctx.rectangle(-4, -baseline, tile_width, height)
+            ctx.rectangle(-4, -glyph.baseline, glyph.width, glyph.height)
             ctx.clip()
-            ctx.mask_surface(surface, -4 - left, -baseline - top)
+            ctx.mask_surface(self.surface, -4 - glyph.x, -glyph.baseline - glyph.y)
             ctx.restore()
-            ctx.translate(advance + tracking, 0)
+            ctx.translate(glyph.advance * scale + tracking, 0)
         ctx.restore()
         return width
 
 
 def text_width(ctx, text, size, lettering=None, weight=0):
     if lettering is not None:
-        glyphs = lettering.layout(text, size, weight)
-        if glyphs is not None:
-            return sum(g[-1] for g in glyphs)
+        return sum(g.advance * (size / g.em) for g in lettering.glyphs(text, weight))
     ctx.select_font_face("sans-serif", cairo.FONT_SLANT_NORMAL,
                          cairo.FONT_WEIGHT_BOLD if weight else cairo.FONT_WEIGHT_NORMAL)
     ctx.set_font_size(size)
@@ -159,10 +132,8 @@ def text_width(ctx, text, size, lettering=None, weight=0):
 def paint_text(ctx, text, x, y, size, color, lettering=None, weight=0, align=0):
     set_color(ctx, color)
     if lettering is not None:
-        width = lettering.draw(ctx, text, x, y, size, weight, align)
-        if width is not None:
-            return width
-    # Desktop previews, setup messages and words missing from an older car app.
+        return lettering.draw(ctx, text, x, y, size, weight, align)
+    # Setup messages and standalone previews use the local font.
     width = text_width(ctx, text, size, weight=weight)
     ctx.move_to(x - width * align, y)
     ctx.show_text(text)
@@ -187,10 +158,9 @@ def paint_speed(ctx, text, face_height, ink, lettering):
         paint_text(ctx, text, 0, -descent, 216, ink, align=0.5)
     else:
         set_color(ctx, ink)
-        row = lettering.speed_row
         # The centres of the 8 and 0 are 114 pixels apart for a 100-pixel-wide zero.
-        tracking = 1.14 * width - lettering.widths[row][0]
-        lettering.draw(ctx, text, 0, -descent, 216, row, 0.5, tracking=tracking)
+        tracking = 1.14 * width - lettering.faces[1]["0"].advance
+        lettering.draw(ctx, text, 0, -descent, 216, 1, 0.5, tracking=tracking)
     ctx.restore()
 
 
@@ -357,13 +327,9 @@ def display_mode(fields):
         state = fields.get("charge_state")
         if state in ("charging", "full", "fault"):
             return state
-        if state != "idle":
-            active = fields.get("charging_active")  # Older Android senders
-            if active is True:
-                return "charging"
-            if (active is not False and plugged is True and gear == "P"
-                    and (number(fields, "battery_power_mw") or 0) >= 100_000):
-                return "charging"
+        if (state is None and plugged is True and gear == "P"
+                and (number(fields, "battery_power_mw") or 0) >= 100_000):
+            return "charging"
         if plugged is True:
             return "plugged"
     if fields.get("before_drive") is True and gear == "P" and speed == 0:

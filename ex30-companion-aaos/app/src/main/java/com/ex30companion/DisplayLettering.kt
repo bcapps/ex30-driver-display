@@ -17,92 +17,69 @@ import java.io.ByteArrayOutputStream
  * the pixels for day/night and reuses them for the whole connection.
  */
 object DisplayLettering {
-    private const val CELL = 320
-    private val labels = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "P", "R", "N", "D", "km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
-    private val chargingLabels = listOf("Charging", "Done in", "h", "min", "kW", ".")
-    private val welcomeLabels = listOf("Hello", "Press the brake and select D or R to start")
-    private val statusLabels = listOf("Plugged in", "Target reached", "Charging fault", "°C", "°F", "−")
+    private val digitsAndGears = "0123456789PRND".map(Char::toString)
+    private val readings = digitsAndGears + listOf("km/h", "mph", "m/s", "mi", "km", "m", "%", "–")
     private fun novum(weight: String) =
         Typeface.create("VolvoNovum-$weight", Typeface.NORMAL).takeUnless { it == Typeface.DEFAULT }
 
     private fun inter(assets: AssetManager, weight: Int) = Typeface.Builder(assets, "InterVariable.ttf")
         .setFontVariationSettings("'wght' $weight").build()
 
-    private fun Bitmap.encodedPng(): String = ByteArrayOutputStream().use {
-        compress(Bitmap.CompressFormat.PNG, 100, it)
-        recycle()
-        Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP)
-    }
-
     fun frame(assets: AssetManager): String {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-            color = Color.WHITE
-        }
-        // Six cells per row leave room for complete unit labels like km/h.
         val regular = novum("Regular")
         val semiLight = novum("SemiLight")
-        val gearFaces = listOf(semiLight ?: Typeface.create("sans-serif-light", Typeface.NORMAL),
-            novum("Medium") ?: Typeface.create("sans-serif-medium", Typeface.NORMAL))
+        val gearFace = semiLight ?: Typeface.create("sans-serif-light", Typeface.NORMAL)
+        val selectedGearFace = novum("Medium") ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
         val speedFace = regular ?: inter(assets, 360)
         val readingFace = semiLight ?: inter(assets, 330)
-        val widths = JSONArray()
-        val bitmap = Bitmap.createBitmap(CELL * 6, 192 * 4 * gearFaces.size, Bitmap.Config.ARGB_8888)
+        val instruments = readings + digitsAndGears
+        val captions = listOf(
+            Triple("Charging", 72, speedFace), Triple("Done in", 72, readingFace),
+            Triple("h", 72, readingFace), Triple("min", 72, readingFace),
+            Triple("kW", 72, readingFace), Triple(".", 72, readingFace),
+            Triple("Hello", 88, selectedGearFace), Triple("Press the brake and select D or R to start", 32, readingFace),
+            Triple("Plugged in", 64, speedFace), Triple("Target reached", 64, speedFace),
+            Triple("Charging fault", 64, speedFace), Triple("°C", 64, readingFace),
+            Triple("°F", 64, readingFace), Triple("−", 64, readingFace)
+        )
+        val captionTop = (instruments.size + 5) / 6 * 192
+        val bitmap = Bitmap.createBitmap(1920, captionTop + (captions.size + 2) / 3 * 96, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        for ((row, gearFace) in gearFaces.withIndex()) {
-            val advances = JSONArray()
-            for ((i, label) in labels.withIndex()) {
-                val digit = i < 10
-                paint.typeface = when {
-                    digit -> if (row == 1) speedFace else readingFace
-                    label == "km" || label == "mi" || label == "m" || label == "%" -> readingFace
-                    label.length == 1 && label[0] in "PRND" -> gearFace
-                    else -> regular ?: Typeface.DEFAULT
-                }
-                paint.fontFeatureSettings = when {
-                    digit -> "'lnum' 1, 'tnum' 1"
-                    label == "%" -> "'case' 1"
-                    else -> null
-                }
-                paint.textSize = if (digit) 216f else 128f
-                val baseline = if (digit) 174 else 150
-                canvas.drawText(label, (i % 6 * CELL + 4).toFloat(),
-                    (row * 768 + i / 6 * 192 + baseline).toFloat(), paint)
-                advances.put(paint.measureText(label).toDouble())
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { color = Color.WHITE }
+        val advances = JSONArray()
+        fun draw(label: String, face: Typeface, size: Int, x: Int, baseline: Int, features: String? = null) {
+            paint.typeface = face
+            paint.textSize = size.toFloat()
+            paint.fontFeatureSettings = features
+            canvas.drawText(label, (x + 4).toFloat(), baseline.toFloat(), paint)
+            advances.put(paint.measureText(label).toDouble())
+        }
+        for ((i, label) in instruments.withIndex()) {
+            val selected = i >= readings.size
+            val digit = label[0].isDigit()
+            val face = when {
+                digit -> if (selected) speedFace else readingFace
+                label in listOf("P", "R", "N", "D") -> if (selected) selectedGearFace else gearFace
+                label in listOf("km", "mi", "m", "%") -> readingFace
+                else -> regular ?: Typeface.DEFAULT
             }
-            widths.put(advances)
+            val features = when {
+                digit -> "'lnum' 1, 'tnum' 1"
+                label == "%" -> "'case' 1"
+                else -> null
+            }
+            draw(label, face, if (digit) 216 else 128, i % 6 * 320, i / 6 * 192 + (if (digit) 174 else 150), features)
         }
-        // The last two cells of each block are unused by the driving display.
-        val chargingWidths = JSONArray()
-        paint.textSize = 72f
-        paint.fontFeatureSettings = null
-        for ((i, label) in chargingLabels.withIndex()) {
-            paint.typeface = if (i == 0) speedFace else readingFace
-            val x = (4 + i % 2) * CELL + 4
-            val y = i / 4 * 768 + 576 + i / 2 % 2 * 96 + 74
-            canvas.drawText(label, x.toFloat(), y.toFloat(), paint)
-            chargingWidths.put(paint.measureText(label).toDouble())
+        for ((i, caption) in captions.withIndex()) {
+            val (label, size, face) = caption
+            draw(label, face, size, i % 3 * 640, captionTop + i / 3 * 96 + 72)
         }
-        // Two lines share the final 640 × 96 strip of the existing atlas.
-        val welcomeWidths = JSONArray()
-        for ((i, label) in welcomeLabels.withIndex()) {
-            paint.typeface = if (i == 0) gearFaces[1] else readingFace
-            paint.textSize = if (i == 0) 88f else 32f
-            canvas.drawText(label, (4 * CELL + 4).toFloat(), if (i == 0) 1507f else 1534f, paint)
-            welcomeWidths.put(paint.measureText(label).toDouble())
+        val png = ByteArrayOutputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            bitmap.recycle()
+            Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP)
         }
-        // Keep the original atlas readable by older displays.
-        val statusBitmap = Bitmap.createBitmap(1536, 192, Bitmap.Config.ARGB_8888)
-        val statusCanvas = Canvas(statusBitmap)
-        val statusWidths = JSONArray()
-        paint.textSize = 64f
-        for ((i, label) in statusLabels.withIndex()) {
-            paint.typeface = if (i < 3) speedFace else readingFace
-            statusCanvas.drawText(label, (i % 3 * 512 + 4).toFloat(), (i / 3 * 96 + 72).toFloat(), paint)
-            statusWidths.put(paint.measureText(label).toDouble())
-        }
-        return JSONObject().put("type", "lettering").put("version", 1).put("speedRow", 1)
-            .put("labels", JSONArray(labels)).put("advances", widths).put("chargingAdvances", chargingWidths)
-            .put("welcomeAdvances", welcomeWidths).put("png", bitmap.encodedPng())
-            .put("statusAdvances", statusWidths).put("statusPng", statusBitmap.encodedPng()).toString()
+        return JSONObject().put("type", "lettering").put("version", 2)
+            .put("advances", advances).put("png", png).toString()
     }
 }

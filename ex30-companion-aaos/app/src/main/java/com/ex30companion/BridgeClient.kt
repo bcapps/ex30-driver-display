@@ -93,8 +93,6 @@ class BridgeClient(private val context: Context, private val adapter: BluetoothA
             val v = wire.value
             if (v is Number && !v.toDouble().isFinite()) continue
             fields.put(wire.field, v)
-            // Previously paired Pi software still uses this flag.
-            if (wire.field == "charge_state") fields.put("charging_active", v == "charging")
         }
         when (mode) {
             Configuration.UI_MODE_NIGHT_YES -> fields.put("night_mode", true)

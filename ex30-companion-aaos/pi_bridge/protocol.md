@@ -2,9 +2,11 @@
 
 The Pi advertises a bonded RFCOMM service with UUID `9e457bc1-0291-4dcb-8427-919da22db81f`. Android discovers the RFCOMM channel via SDP. There is one car-to-Pi stream, UTF-8 JSON with one object per newline. [Android RFCOMM sockets](https://developer.android.com/reference/android/bluetooth/BluetoothDevice#createRfcommSocketToServiceRecord(java.util.UUID)) · [BlueZ profile API](https://bluez.readthedocs.io/en/latest/profile-api/)
 
-The first frame has type `lettering`, version 1. It contains the ordered instrument labels, per-face advances in pixels, and a transparent base64 PNG. Its six-column grid has 320 × 192 px cells, in two blocks of four rows. Block 0 supplies the range, charge and inactive gear letters. Block 1 supplies the speed digits and selected gear. The optional `speedRow` is 1 in new frames and defaults to 0 for older senders.
+The first frame has type `lettering` and version `2`. Both endpoints use this single format. Android sends one transparent 1920 × 1632 image in `png` (base64) and the 50 corresponding advance widths in `advances` (pixels). The Pi validates the complete frame before displaying vehicle data.
 
-Digits use a 216 px em and a 174 px baseline. Other labels use 128 and 150 px respectively. Each label starts 4 px from the left edge. New senders draw range and charge in Novum SemiLight, select tabular digits and request the cap-height percent sign. The Pi measures the visible zero and percent sign once per connection so older senders also display the smaller, bottom-aligned sign. The Pi tints the lettering for each palette. Font files stay on the car.
+The first six rows use 320 × 192 px cells, six across. In order, they contain the reading digits 0–9, P/R/N/D, `km/h`, `mph`, `m/s`, `mi`, `km`, `m`, `%`, the dash `–`, the speed digits 0–9 and the selected P/R/N/D. Digits use a 216 px em and a 174 px baseline. Other instruments use 128 and 150 px respectively. The Pi measures the visible zero and percent glyphs to size and align the numbers for the font on the car.
+
+Five rows of 640 × 96 px caption cells follow, three across, each with a 72 px baseline. All cells have a 4 px left inset. The Pi tints the same lettering for light and dark mode. Font files stay on the car. Both endpoints define the caption order and font sizes. [Android painter](../app/src/main/java/com/ex30companion/DisplayLettering.kt) · [Pi renderer](../../display/cluster.py)
 
 Each subsequent frame has type `state` and a complete `fields` object. This sample describes 60 mph and 100 miles of range.
 
@@ -14,14 +16,10 @@ Each subsequent frame has type `state` and a complete `fields` object. This samp
 
 Missing fields clear the previous value. Numeric fields carry m/s, metres, Wh or mW as described in the property table. The selected gear is a letter. Switches are booleans. A positive normalized power value means charging or regeneration. [Field sources](../docs/properties.md) · [Android wire mapping](../app/src/main/java/com/ex30companion/WireFieldMapper.kt)
 
-`charge_state` carries `idle`, `charging`, `full` or `fault` when the car reports a known state. Senders also supply `charging_active` for earlier receivers. `charge_port_connected` reports the cable independently, `charge_target_pct` is the selected limit, and `charge_seconds_remaining` is the estimated time remaining. Each field is optional.
+`charge_state` carries `idle`, `charging`, `full` or `fault` when the car reports a known state. `charge_port_connected` reports the cable independently, `charge_target_pct` is the selected limit, and `charge_seconds_remaining` is the estimated time remaining. Each field is optional.
 
 `outside_temp_c` and `pack_temp_c` carry independent readings in degrees Celsius. `temperature_unit` is `C` or `F` and applies to the displayed outside reading. `battery_low` carries the vehicle’s low-energy flag. An unavailable reading is omitted from the snapshot.
 
-The lettering frame can include `chargingAdvances` for `Charging`, `Done in`, `h`, `min`, `kW`, and the decimal point in that order. They occupy 320 × 96 px tiles in the last two columns of the bottom row of each block, left to right then top to bottom, at a 72 px em and a 74 px baseline. New receivers use local text for labels missing from older senders.
-
-Optional `statusPng` and `statusAdvances` supply `Plugged in`, `Target reached`, `Charging fault`, `°C`, `°F` and `−` in that order. The separate transparent PNG is 1536 × 192 px, arranged in three columns of 512 × 96 px cells. Each label starts at x = 4 with its baseline at y = 72 inside the cell. Earlier receivers use the original lettering image.
-
-The optional boolean `before_drive` means the sender has yet to observe a driving gear or motion since waking. The Pi also requires Park and zero speed for the welcome face. An absent flag selects the existing driving or charging face. Optional `welcomeAdvances` contains the widths of “Hello” and “Press the brake and select D or R to start”. Both use the last 640 × 96 px strip of the existing atlas, starting at x = 1284. Their baselines are y = 1507 and 1534 at 88 and 32 px respectively.
+Android sets `before_drive` to true until it observes a driving gear or motion after waking. The Pi also requires Park and zero speed for the welcome face.
 
 Android sends changed readings up to 20 times a second and a current snapshot at least once per second while connected. The Pi allows 15 seconds for initial lettering and state, then clears its instruments after three seconds without a valid snapshot. Each reconnect starts with fresh lettering and a full state.

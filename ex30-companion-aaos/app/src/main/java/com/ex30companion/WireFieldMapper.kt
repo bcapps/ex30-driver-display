@@ -1,5 +1,6 @@
 package com.ex30companion
 
+import android.car.VehicleGear
 import android.car.VehiclePropertyIds
 import android.car.VehicleUnit
 import android.car.hardware.property.EvChargeState
@@ -38,13 +39,8 @@ object WireFieldMapper {
                 Wire("speed_display_aaos", (raw as Number).toFloat())
             VehiclePropertyIds.EV_BATTERY_LEVEL ->
                 Wire("soc_aaos", (raw as Number).toFloat())
-            // EV_BATTERY_INSTANTANEOUS_CHARGE_RATE per VHAL spec is mW with
-            // positive = charging (regen / plugged in), negative = discharging.
-            // The real EX30 ships the opposite sign (verified during the
-            // 2026-05-14 charge cycle on the retail car): negative = charging
-            // and regen, positive = discharging. We invert here so the wire
-            // field matches the spec the Pi gauges code against — keeps the
-            // receiver consistent for this EX30 implementation.
+            // Upstream measured negative power during charging and regen on a retail EX30.
+            // Convert to the wire convention of positive mW into the battery.
             VehiclePropertyIds.EV_BATTERY_INSTANTANEOUS_CHARGE_RATE ->
                 Wire("battery_power_mw", -(raw as Number).toFloat())
             VehiclePropertyIds.RANGE_REMAINING ->
@@ -72,15 +68,11 @@ object WireFieldMapper {
         }
     }
 
-    // android.car.VehicleGear bit values — pinned here rather than referenced
-    // because the constants moved between API 30 and 33; the underlying bits
-    // are stable across all versions the EX30 has shipped.
-    private fun gearName(bits: Int): String = when (bits) {
-        0x0001 -> "N"  // GEAR_NEUTRAL
-        0x0002 -> "R"  // GEAR_REVERSE
-        0x0004 -> "P"  // GEAR_PARK
-        0x0008 -> "D"  // GEAR_DRIVE (and any GEAR_1..GEAR_9 collapse to D for our purposes)
-        in 0x0010..0x1000 -> "D"
+    private fun gearName(gear: Int): String = when (gear) {
+        VehicleGear.GEAR_NEUTRAL -> "N"
+        VehicleGear.GEAR_REVERSE -> "R"
+        VehicleGear.GEAR_PARK -> "P"
+        VehicleGear.GEAR_DRIVE, in VehicleGear.GEAR_FIRST..VehicleGear.GEAR_NINTH -> "D"
         else -> "UNKNOWN"
     }
 }

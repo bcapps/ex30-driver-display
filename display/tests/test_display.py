@@ -20,38 +20,36 @@ def labels(fields):
 
 
 def lettering_frame(sign_height=91, sign_descent=2):
-    atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1536)
+    atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1632)
     ctx = cairo.Context(atlas)
     ctx.rectangle(12, 22, 94, 153)
-    ctx.rectangle(10, 768 + 24, 113, 154)
-    i = cluster.LABELS.index("%")
+    i = len(cluster.READINGS)
+    ctx.rectangle(i % 6 * 320 + 10, i // 6 * 192 + 24, 113, 154)
+    i = cluster.READINGS.index("%")
     ctx.rectangle(i % 6 * 320 + 8, i // 6 * 192 + 150 + sign_descent - sign_height, 96, sign_height)
     ctx.fill()
     png = io.BytesIO()
     atlas.write_to_png(png)
-    widths = [[130] * len(cluster.LABELS) for _ in range(2)]
-    widths[1][cluster.LABELS.index("km/h")] = 318  # Novum Medium in older car apps
-    return {"version": 1, "labels": cluster.LABELS, "png": base64.b64encode(png.getvalue()),
-            "advances": widths}
+    advances = [130] * (len(cluster.READINGS) + len(cluster.DIGITS_AND_GEARS))
+    advances.extend(100 + i for i in range(len(cluster.CAPTIONS)))
+    return {"type": "lettering", "version": 2, "png": base64.b64encode(png.getvalue()).decode(),
+            "advances": advances}
 
 
 class InstrumentTests(unittest.TestCase):
     def test_speed_ink_on_wide_and_tall_screens(self):
-        frame = lettering_frame()
-        legacy = cluster.Lettering(frame)
-        current = cluster.Lettering(dict(frame, speedRow=1))
-        self.assertEqual(legacy.zero_ink, (94, 153, 1))
-        self.assertEqual(current.zero_ink, (113, 154, 4))
+        face = cluster.Lettering(lettering_frame())
+        self.assertEqual(face.zero_ink, (113, 154, 4))
         pair = cairo.ImageSurface(cairo.FORMAT_A8, 400, 350)
         ctx = cairo.Context(pair)
         ctx.translate(-754, 0)
-        cluster.paint_speed(ctx, "00", 480, cluster.DAY[1], current)
+        cluster.paint_speed(ctx, "00", 480, cluster.DAY[1], face)
         pair.flush()
         scan = bytes(pair.get_data())[220 * pair.get_stride():220 * pair.get_stride() + 400]
         starts = [x for x in range(1, 400) if scan[x - 1] < 128 <= scan[x]]
         self.assertEqual(len(starts), 2)
         self.assertAlmostEqual(starts[1] - starts[0], 0.34 * 480 * 0.72 * 1.14, delta=1)
-        for lettering in (None, legacy, current):
+        for lettering in (None, face):
             for width, height in ((1920, 480), (1920, 448), (1280, 720)):
                 with self.subTest(lettering=lettering, size=(width, height)):
                     surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
@@ -69,8 +67,8 @@ class InstrumentTests(unittest.TestCase):
                     self.assertAlmostEqual(max(ys) + 1, center + 0.148 * face_height, delta=2)
 
     def test_left_readings_and_percent_ink(self):
-        for height, descent in ((91, 2), (114, 14)):  # Cap-height and legacy Novum percent signs
-            face = cluster.Lettering(dict(lettering_frame(height, descent), speedRow=1))
+        for height, descent in ((91, 2), (114, 14)):  # Font metrics vary with the typeface installed in the car.
+            face = cluster.Lettering(lettering_frame(height, descent))
             for dark in (False, True):
                 with self.subTest(percent_height=height, dark=dark):
                     surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 448)
@@ -126,17 +124,16 @@ class InstrumentTests(unittest.TestCase):
             with self.subTest(welcome=welcome):
                 self.assertTrue(rows[0] == rows[1], "A stroke from the parking brake crossed the display")
 
-    def test_active_charging_and_legacy_detection(self):
+    def test_charging_from_vehicle_state_or_parked_power_reading(self):
         plugged = {"charge_port_connected": True, "gear_selected": "P", "speed_display_aaos": 0}
         self.assertEqual(cluster.display_mode(plugged), "plugged")
         self.assertEqual(cluster.display_mode(dict(plugged, battery_power_mw=4_000)), "plugged")
         self.assertEqual(cluster.display_mode(dict(plugged, battery_power_mw=1_400_000)), "charging")
-        self.assertEqual(cluster.display_mode(dict(plugged, charging_active=False, battery_power_mw=1_400_000)), "plugged")
-        self.assertEqual(cluster.display_mode({"charging_active": True}), "charging")
+        self.assertEqual(cluster.display_mode({"charge_state": "charging"}), "charging")
         self.assertEqual(cluster.display_mode({"battery_power_mw": 22_000_000}), "driving")
         self.assertEqual(cluster.display_mode({"charge_state": "idle", "gear_selected": "P"}), "driving")
         for state, mode in (("idle", "plugged"), ("charging", "charging"), ("full", "full"), ("fault", "fault")):
-            fields = dict(plugged, charge_state=state, charging_active=True, battery_power_mw=22_000_000)
+            fields = dict(plugged, charge_state=state, battery_power_mw=22_000_000)
             self.assertEqual(cluster.display_mode(fields), mode)
             for change in ({"charge_port_connected": False}, {"gear_selected": "D"}, {"gear_selected": "R"},
                            {"gear_selected": "N"}, {"speed_display_aaos": -0.5}):
@@ -152,7 +149,7 @@ class InstrumentTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 self.assertEqual(cluster.display_mode(dict(parked, **changes)), "driving")
         self.assertEqual(cluster.display_mode({"gear_selected": "P", "speed_display_aaos": 0}), "driving")
-        self.assertEqual(cluster.display_mode(dict(parked, charging_active=True)), "charging")
+        self.assertEqual(cluster.display_mode(dict(parked, charge_state="charging")), "charging")
         self.assertEqual(cluster.display_mode(dict(parked, charge_port_connected=True)), "plugged")
         self.assertEqual(labels(parked), list(cluster.WELCOME_LABELS))
         self.assertEqual(labels(dict(parked, soc_aaos=64, usable_capacity_wh=100,
@@ -224,22 +221,24 @@ class InstrumentTests(unittest.TestCase):
                 partial_welcome = pixels(render(parked, transition))
                 self.assertTrue(pixels(render(moving, transition)) == partial_welcome)
 
-    def test_welcome_lettering_accepts_old_and_new_senders(self):
-        old = lettering_frame()
-        self.assertIsNone(cluster.Lettering(old).layout("Hello", 88, 1))
-        face = cluster.Lettering(dict(old, welcomeAdvances=[122, 546]))
-        for i, size in enumerate((88, 32)):
-            self.assertEqual(cluster.text_width(canvas(), cluster.WELCOME_LABELS[i], size, face), (122, 546)[i])
-        with self.assertRaises(ValueError):
-            cluster.Lettering(dict(old, welcomeAdvances=[122, 680]))
+    def test_complete_lettering_includes_every_caption(self):
+        frame = lettering_frame()
+        stream = Stream()
+        stream.feed(json.dumps(frame).encode() + b"\n")
+        for i, (label, em) in enumerate(cluster.CAPTIONS):
+            with self.subTest(label=label):
+                self.assertEqual(cluster.text_width(canvas(), label, em, stream.lettering), 100 + i)
+        for widths in (frame["advances"][:-1], [float("nan")] * len(frame["advances"])):
+            with self.assertRaises(ValueError):
+                cluster.Lettering(dict(frame, advances=widths))
 
     def test_charging_uses_only_available_readings(self):
-        fields = {"charging_active": True, "soc_aaos": 32_000, "usable_capacity_wh": 50_000,
+        fields = {"charge_state": "charging", "soc_aaos": 32_000, "usable_capacity_wh": 50_000,
                   "range_m_aaos": 160934.4, "distance_unit": "mi", "battery_power_mw": 7_200_000,
                   "charge_target_pct": 90, "charge_seconds_remaining": 4450}
         self.assertEqual(labels(fields), ["Charging", "100", "mi", "Done in", "1", "h", "15", "min",
                                            "7.2", "kW", "64", "%", "90", "%"])
-        self.assertEqual(labels({"charging_active": True, "battery_power_mw": -1_000_000,
+        self.assertEqual(labels({"charge_state": "charging", "battery_power_mw": -1_000_000,
                                  "charge_target_pct": 150, "charge_seconds_remaining": 0}), ["Charging", "–"])
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 3600}, "charging")), [["Done in", "1", "h"]])
         self.assertEqual(list(cluster.charging_details({"charge_seconds_remaining": 1}, "charging")), [["Done in", "1", "min"]])
@@ -294,7 +293,7 @@ class InstrumentTests(unittest.TestCase):
             for dark in (False, True):
                 for charge, limit in ((64, 90), (90, 90), (75, 50), (100, 100)):
                     with self.subTest(size=(width, height), dark=dark, charge=charge, limit=limit):
-                        fields = {"charging_active": True, "usable_capacity_wh": 100,
+                        fields = {"charge_state": "charging", "usable_capacity_wh": 100,
                                   "soc_aaos": charge, "charge_target_pct": limit}
                         surface = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
                         cluster.draw(cairo.Context(surface), width, height, fields, dark=dark)
@@ -322,7 +321,7 @@ class InstrumentTests(unittest.TestCase):
     def test_changing_limit_only_moves_the_marker_and_its_label(self):
         def above_marker(charge, limit):
             ctx = canvas()
-            fields = {"charging_active": True, "soc_aaos": charge, "usable_capacity_wh": 100,
+            fields = {"charge_state": "charging", "soc_aaos": charge, "usable_capacity_wh": 100,
                       "range_m_aaos": 384_000, "battery_power_mw": 22_000_000,
                       "charge_seconds_remaining": 4500, "charge_target_pct": limit}
             cluster.draw(ctx, 960, 240, fields)
@@ -343,7 +342,7 @@ class InstrumentTests(unittest.TestCase):
             face = cluster.Lettering(lettering_frame(sign_height, descent))
             for limit in (0, 50, 90, 100):
                 with self.subTest(sign_height=sign_height, limit=limit):
-                    fields = {"charging_active": True, "soc_aaos": 0, "usable_capacity_wh": 100,
+                    fields = {"charge_state": "charging", "soc_aaos": 0, "usable_capacity_wh": 100,
                               "charge_target_pct": limit}
                     surface = cairo.ImageSurface(cairo.FORMAT_RGB24, 1920, 480)
                     cluster.draw(cairo.Context(surface), 1920, 480, fields, face)
@@ -398,5 +397,7 @@ class StreamTests(unittest.TestCase):
                 Stream().feed(wire)
 
     def test_reject_unexpected_lettering(self):
-        with self.assertRaises(ValueError):
-            cluster.Lettering({"version": 1, "labels": cluster.LABELS, "png": "AAAA"})
+        frame = lettering_frame()
+        for malformed in (dict(frame, version=1), dict(frame, png="AAAA")):
+            with self.assertRaises(ValueError):
+                Stream().feed(json.dumps(malformed).encode() + b"\n")
