@@ -96,8 +96,8 @@ class InstrumentTests(unittest.TestCase):
                          ["60", "mph", "161", "km"])
         self.assertEqual(labels({"range_m_aaos": 160934.4, "distance_unit": "mi"}), ["–", "100", "mi"])
 
-    def test_ready_only_under_the_driving_percentage_for_a_reported_departure(self):
-        fields = {"speed_display_aaos": 0, "soc_aaos": 90, "usable_capacity_wh": 100}
+    def test_ready_aligns_with_range_only_during_a_reported_departure(self):
+        fields = {"speed_display_aaos": 0, "soc_aaos": 90, "usable_capacity_wh": 100, "range_m_aaos": 305000}
         for dark in (False, True):
             for gear in ("P", "N", "D", "R"):
                 for cue in (None, "welcome", "ready"):
@@ -108,7 +108,7 @@ class InstrumentTests(unittest.TestCase):
                         self.assertEqual("READY" in calls, expected)
                         if expected:
                             _, _, x, y, size, color, _ = calls["READY"]
-                            self.assertEqual(x, calls["90"][2])
+                            self.assertEqual(x, calls["305"][2])
                             self.assertGreater(y - size, calls["%"][3])
                             self.assertLess(size, calls["90"][4])
                             self.assertGreater(int(color[3:5], 16), max(int(color[1:3], 16), int(color[5:], 16)))

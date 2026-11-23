@@ -433,12 +433,11 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
         paint_text(ctx, unit, reading_x + advance + 5, 202, 33, reading_ink, lettering)
 
     percent = battery_percent(fields)
-    percent_x = reading_x + 69
     low = fields.get("battery_low")
     cold = cold_pack(fields)
     if percent is not None or low is True or cold:
         battery(ctx, reading_x + 4, 237, percent, battery_ink(percent, low, dark))
-        x = percent_x
+        x = reading_x + 69
         if percent is None:
             x += paint_text(ctx, "–", x, 263, 39, reading_ink, lettering)
         else:
@@ -449,7 +448,7 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
             snowflake(ctx, x + 24, 249, 14, reading_ink)
 
     if fields.get("start_cue") == "ready" and fields.get("gear_selected") in ("D", "R"):
-        paint_text(ctx, "READY", percent_x, 302, 26, "#70bd85" if dark else "#208a44", lettering, weight=1)
+        paint_text(ctx, "READY", reading_x, 302, 26, "#70bd85" if dark else "#208a44", lettering, weight=1)
 
 
 def paint_welcome(ctx, fields, lettering, dark):
