@@ -20,7 +20,7 @@ def labels(fields):
 
 
 def lettering_frame(sign_height=91, sign_descent=2):
-    atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1632)
+    atlas = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 1536)
     ctx = cairo.Context(atlas)
     ctx.rectangle(12, 22, 94, 153)
     i = len(cluster.READINGS)
@@ -32,7 +32,7 @@ def lettering_frame(sign_height=91, sign_descent=2):
     atlas.write_to_png(png)
     advances = [130] * (len(cluster.READINGS) + len(cluster.DIGITS_AND_GEARS))
     advances.extend(100 + i for i in range(len(cluster.CAPTIONS)))
-    return {"type": "lettering", "version": 2, "png": base64.b64encode(png.getvalue()).decode(),
+    return {"type": "lettering", "version": 3, "png": base64.b64encode(png.getvalue()).decode(),
             "advances": advances}
 
 
@@ -267,22 +267,23 @@ class InstrumentTests(unittest.TestCase):
             self.assertEqual(cluster.battery_ink(0, False, dark), colors[3])
         self.assertEqual(labels({"battery_low": True}), ["–", "–"])
 
-    def test_temperature_icons_use_independent_conditions(self):
-        fields = dict(soc_aaos=45, usable_capacity_wh=100)
-        for outside, unit, pack, air_icon, pack_icon in (
-                (2.9, "C", 0, True, False), (3, "C", -1, False, True),
-                (2.2, "F", -3, True, True), (2.3, "F", 1, False, False),
-                (None, "C", -4, False, True), (float("nan"), "C", None, False, False)):
-            with self.subTest(outside=outside, unit=unit, pack=pack), patch("cluster.snowflake") as flake:
-                cluster.draw(canvas(), 960, 240, dict(fields, pack_temp_c=pack, outside_temp_c=outside,
-                                                      temperature_unit=unit))
-                rows = [call.args[2] for call in flake.call_args_list]
-                self.assertEqual(402 in rows, air_icon)
-                self.assertEqual(249 in rows, pack_icon)
-        self.assertEqual(labels({"outside_temp_c": -0.2}), ["–", "−1", "°C"])
-        with patch("cluster.snowflake") as flake:
-            cluster.draw(canvas(), 960, 240, {"charge_state": "full", "pack_temp_c": -1})
-            flake.assert_called_once()
+    def test_snowflake_follows_pack_temperature_on_each_face(self):
+        faces = (
+            {"gear_selected": "D"},
+            {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0},
+            {"charge_port_connected": True},
+            {"charge_state": "charging"},
+            {"charge_state": "full"},
+            {"charge_state": "fault"},
+        )
+        for face in faces:
+            for pack, visible in ((-0.1, True), (0, False), (8, False), (None, False), (float("nan"), False)):
+                fields = dict(face, soc_aaos=45, usable_capacity_wh=100)
+                if pack is not None:
+                    fields["pack_temp_c"] = pack
+                with self.subTest(face=face, pack=pack), patch("cluster.snowflake") as flake:
+                    cluster.draw(canvas(), 960, 240, fields)
+                    self.assertEqual(flake.call_count, int(visible))
 
     @patch("cluster.time.monotonic", lambda: 0)
     def test_solid_charging_band_and_limit_use_one_scale(self):
@@ -398,6 +399,6 @@ class StreamTests(unittest.TestCase):
 
     def test_reject_unexpected_lettering(self):
         frame = lettering_frame()
-        for malformed in (dict(frame, version=1), dict(frame, png="AAAA")):
+        for malformed in (dict(frame, version=2), dict(frame, png="AAAA")):
             with self.assertRaises(ValueError):
                 Stream().feed(json.dumps(malformed).encode() + b"\n")

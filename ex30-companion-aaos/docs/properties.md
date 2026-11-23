@@ -9,8 +9,7 @@ Only supported, permitted, available values enter a snapshot. The app uses the p
 | `RANGE_REMAINING` | Car-estimated remaining distance in metres. A mile is 1,609.344 m. |
 | `EV_BATTERY_LEVEL` | Remaining energy in Wh. Divide by `EV_CURRENT_BATTERY_CAPACITY` or, when unavailable, `INFO_EV_BATTERY_CAPACITY`. The factory’s displayed percentage can differ from this estimate. |
 | `FUEL_LEVEL_LOW` | If the car reports low traction-battery energy, the small battery icon shows at least amber. The rounded percentage also selects amber at 15%, orange at 10%, and red at 5% and below. |
-| `ENV_OUTSIDE_TEMPERATURE`, `HVAC_TEMPERATURE_DISPLAY_UNITS` | Show the available outside temperature in the car’s preferred unit, defaulting to °C. As in the archived EX30 System UI, round down after conversion and show a snowflake at a displayed 2°C or 35°F and below. |
-| `EV_BATTERY_AVERAGE_TEMPERATURE` | A separate snowflake beside the battery percentage appears below 0°C pack temperature. An unavailable reading clears that snowflake. |
+| `EV_BATTERY_AVERAGE_TEMPERATURE` | A snowflake beside the battery percentage appears below 0°C pack temperature. A reading at or above 0°C, or an unavailable reading, clears it. |
 | `GEAR_SELECTION`, `PARKING_BRAKE_ON` | Highlight the selected gear and show the steady engaged parking brake independently. |
 | `EV_BATTERY_INSTANTANEOUS_CHARGE_RATE` | Upstream observed the EX30 reports the opposite sign to Android’s specification. The app preserves its EX30 sign correction. The Pi gauge spans 200 kW draw and 100 kW regeneration. Those are drawing scales. Volvo’s exact available power, regen limits and friction braking require separate inputs. |
 | `EV_CHARGE_PORT_CONNECTED`, `IGNITION_STATE` | Plug indicator and decisions about leaving or resuming the connection. |

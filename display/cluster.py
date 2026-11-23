@@ -22,7 +22,7 @@ CHARGE_TITLES = {"charging": "Charging", "plugged": "Plugged in", "full": "Targe
 CAPTIONS = (
     ("Charging", 72), ("Done in", 72), ("h", 72), ("min", 72), ("kW", 72), (".", 72),
     (WELCOME_LABELS[0], 88), (WELCOME_LABELS[1], 32),
-    ("Plugged in", 64), ("Target reached", 64), ("Charging fault", 64), ("°C", 64), ("°F", 64), ("−", 64),
+    ("Plugged in", 64), ("Target reached", 64), ("Charging fault", 64),
 )
 
 
@@ -54,7 +54,7 @@ class Glyph(NamedTuple):
 class Lettering:
     """Monochrome text painted by Android. No font software is sent to the Pi."""
     def __init__(self, frame):
-        if frame.get("version") != 2:
+        if frame.get("version") != 3:
             raise ValueError("Unsupported lettering")
         instruments = READINGS + DIGITS_AND_GEARS
         advances = frame["advances"]
@@ -209,20 +209,6 @@ def snowflake(ctx, x, y, radius, color):
 def cold_pack(fields):
     celsius = number(fields, "pack_temp_c")
     return celsius is not None and celsius < 0
-
-
-def paint_outside_temperature(ctx, fields, lettering, dark):
-    celsius = number(fields, "outside_temp_c")
-    if celsius is None:
-        return
-    fahrenheit = fields.get("temperature_unit") == "F"
-    degrees = math.floor(celsius * 9 / 5 + 32 if fahrenheit else celsius)
-    color = NIGHT[2] if dark else "#686868"
-    x = 82
-    x += paint_text(ctx, str(degrees).replace("-", "−"), x, 414, 34, color, lettering)
-    x += paint_text(ctx, "°F" if fahrenheit else "°C", x + 3, 414, 32, color, lettering)
-    if degrees <= (35 if fahrenheit else 2):
-        snowflake(ctx, x + 25, 402, 14, color)
 
 
 def parking_brake(ctx, lettering, ink):
@@ -561,7 +547,6 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
             fade(ctx, transition.departure, paint_welcome, transition.welcome_fields, lettering, dark)
             ctx.pop_group_to_source()
             ctx.paint_with_alpha(1 - progress)
-    paint_outside_temperature(ctx, fields, lettering, dark)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
     if message:
