@@ -39,7 +39,7 @@ object DisplayLettering {
             Triple("kW", 72, readingFace), Triple(".", 72, readingFace),
             Triple("Hello", 88, selectedGearFace), Triple("Press the brake and select D or R to start", 32, readingFace),
             Triple("Plugged in", 64, speedFace), Triple("Target reached", 64, speedFace),
-            Triple("Charging fault", 64, speedFace)
+            Triple("Charging fault", 64, speedFace), Triple("READY", 64, selectedGearFace)
         )
         val captionTop = (instruments.size + 5) / 6 * 192
         val bitmap = Bitmap.createBitmap(1920, captionTop + (captions.size + 2) / 3 * 96, Bitmap.Config.ARGB_8888)
@@ -78,7 +78,7 @@ object DisplayLettering {
             bitmap.recycle()
             Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP)
         }
-        return JSONObject().put("type", "lettering").put("version", 3)
+        return JSONObject().put("type", "lettering").put("version", 4)
             .put("advances", advances).put("png", png).toString()
     }
 }

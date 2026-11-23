@@ -57,18 +57,18 @@ class BridgeClient(private val context: Context, private val adapter: BluetoothA
                     writer.newLine()
                     writer.flush()
                     retryMs = 1000L
-                    var previous: Map<Int, Any>? = null
+                    var previous: DisplaySample? = null
                     var previousMode = -1
                     var lastSent = 0L
                     while (isActive) {
-                        val samples = VehicleStateRepository.state.value
+                        val sample = monitor.sample
                         val mode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
                         val now = SystemClock.elapsedRealtime()
-                        if (samples !== previous || mode != previousMode || now - lastSent >= 1000L) {
-                            writer.write(snapshot(samples, mode).toString())
+                        if (sample !== previous || mode != previousMode || now - lastSent >= 1000L) {
+                            writer.write(snapshot(sample, mode).toString())
                             writer.newLine()
                             writer.flush()
-                            previous = samples
+                            previous = sample
                             previousMode = mode
                             lastSent = now
                         }
@@ -85,10 +85,10 @@ class BridgeClient(private val context: Context, private val adapter: BluetoothA
         }
     }
 
-    private fun snapshot(samples: Map<Int, Any>, mode: Int): JSONObject {
+    private fun snapshot(sample: DisplaySample, mode: Int): JSONObject {
         val fields = JSONObject()
-        if (monitor.beforeDrive) fields.put("before_drive", true)
-        for ((id, value) in samples) {
+        sample.startCue?.let { fields.put("start_cue", it) }
+        for ((id, value) in sample.values) {
             val wire = WireFieldMapper.map(id, value) ?: continue
             val v = wire.value
             if (v is Number && !v.toDouble().isFinite()) continue

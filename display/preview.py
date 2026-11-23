@@ -32,11 +32,16 @@ if __name__ == "__main__":
     modes.add_argument("--charging", nargs="?", const="charging", choices=("charging", "idle", "full", "fault"),
                        help="Show a parked charging state (defaults to active charging)")
     modes.add_argument("--welcome", action="store_true", help="Show the pre-drive greeting")
+    modes.add_argument("--ready", action="store_true", help="Show the first shift into Drive")
     args = parser.parse_args()
     face = Lettering(json.loads(args.lettering.read_bytes())) if args.lettering else None
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1920, 480)
-    fields = dict(EXAMPLE, before_drive=args.welcome)
-    if args.charging:
+    fields = dict(EXAMPLE)
+    if args.welcome:
+        fields["start_cue"] = "welcome"
+    elif args.ready:
+        fields.update(start_cue="ready", gear_selected="D", parking_brake=False)
+    elif args.charging:
         fields = dict(CHARGING_EXAMPLE, charge_state=args.charging)
         if args.charging == "full":
             fields["soc_aaos"] = fields["usable_capacity_wh"] * fields["charge_target_pct"] / 100

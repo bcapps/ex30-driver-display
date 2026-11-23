@@ -22,7 +22,7 @@ CHARGE_TITLES = {"charging": "Charging", "plugged": "Plugged in", "full": "Targe
 CAPTIONS = (
     ("Charging", 72), ("Done in", 72), ("h", 72), ("min", 72), ("kW", 72), (".", 72),
     (WELCOME_LABELS[0], 88), (WELCOME_LABELS[1], 32),
-    ("Plugged in", 64), ("Target reached", 64), ("Charging fault", 64),
+    ("Plugged in", 64), ("Target reached", 64), ("Charging fault", 64), ("READY", 64),
 )
 
 
@@ -54,7 +54,7 @@ class Glyph(NamedTuple):
 class Lettering:
     """Monochrome text painted by Android. No font software is sent to the Pi."""
     def __init__(self, frame):
-        if frame.get("version") != 3:
+        if frame.get("version") != 4:
             raise ValueError("Unsupported lettering")
         instruments = READINGS + DIGITS_AND_GEARS
         advances = frame["advances"]
@@ -318,7 +318,7 @@ def display_mode(fields):
             return "charging"
         if plugged is True:
             return "plugged"
-    if fields.get("before_drive") is True and gear == "P" and speed == 0:
+    if fields.get("start_cue") == "welcome" and gear == "P" and speed == 0:
         return "welcome"
     return "driving"
 
@@ -433,11 +433,12 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
         paint_text(ctx, unit, reading_x + advance + 5, 202, 33, reading_ink, lettering)
 
     percent = battery_percent(fields)
+    percent_x = reading_x + 69
     low = fields.get("battery_low")
     cold = cold_pack(fields)
     if percent is not None or low is True or cold:
         battery(ctx, reading_x + 4, 237, percent, battery_ink(percent, low, dark))
-        x = reading_x + 69
+        x = percent_x
         if percent is None:
             x += paint_text(ctx, "–", x, 263, 39, reading_ink, lettering)
         else:
@@ -446,6 +447,9 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
             x += label.width
         if cold:
             snowflake(ctx, x + 24, 249, 14, reading_ink)
+
+    if fields.get("start_cue") == "ready" and fields.get("gear_selected") in ("D", "R"):
+        paint_text(ctx, "READY", percent_x, 302, 26, "#70bd85" if dark else "#208a44", lettering, weight=1)
 
 
 def paint_welcome(ctx, fields, lettering, dark):

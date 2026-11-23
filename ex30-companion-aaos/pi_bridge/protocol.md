@@ -2,7 +2,7 @@
 
 The Pi advertises a bonded RFCOMM service with UUID `9e457bc1-0291-4dcb-8427-919da22db81f`. Android discovers the RFCOMM channel via SDP. There is one car-to-Pi stream, UTF-8 JSON with one object per newline. [Android RFCOMM sockets](https://developer.android.com/reference/android/bluetooth/BluetoothDevice#createRfcommSocketToServiceRecord(java.util.UUID)) · [BlueZ profile API](https://bluez.readthedocs.io/en/latest/profile-api/)
 
-The first frame has type `lettering` and version `3`. Both endpoints use this single format. Android sends one transparent 1920 × 1536 image in `png` (base64) and the 47 corresponding advance widths in `advances` (pixels). The Pi validates the complete frame before displaying vehicle data.
+The first frame has type `lettering` and version `4`. Both endpoints use this single format. Android sends one transparent 1920 × 1536 image in `png` (base64) and the 48 corresponding advance widths in `advances` (pixels). The Pi validates the complete frame before displaying vehicle data.
 
 The first six rows use 320 × 192 px cells, six across. In order, they contain the reading digits 0–9, P/R/N/D, `km/h`, `mph`, `m/s`, `mi`, `km`, `m`, `%`, the dash `–`, the speed digits 0–9 and the selected P/R/N/D. Digits use a 216 px em and a 174 px baseline. Other instruments use 128 and 150 px respectively. The Pi measures the visible zero and percent glyphs to size and align the numbers for the font on the car.
 
@@ -20,6 +20,6 @@ Missing fields clear the previous value. Numeric fields carry m/s, metres, Wh or
 
 `pack_temp_c` is the average traction-battery temperature in degrees Celsius. `battery_low` carries the vehicle’s low-energy flag. Each field is omitted when its reading is unavailable.
 
-Android sets `before_drive` to true until it observes a driving gear or motion after waking. The Pi also requires Park and zero speed for the welcome face.
+Android sends `start_cue: "welcome"` for the initial stationary Park reading and `start_cue: "ready"` during the following shift into D or R at up to 5 km/h in either direction. Once that departure ends the field is omitted, including at later stops and on Bluetooth reconnects. The car app tracks the cue even while the Pi is disconnected.
 
 Android sends changed readings up to 20 times a second and a current snapshot at least once per second while connected. The Pi allows 15 seconds for initial lettering and state, then clears its instruments after three seconds without a valid snapshot. Each reconnect starts with fresh lettering and a full state.

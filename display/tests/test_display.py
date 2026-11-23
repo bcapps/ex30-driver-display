@@ -32,7 +32,7 @@ def lettering_frame(sign_height=91, sign_descent=2):
     atlas.write_to_png(png)
     advances = [130] * (len(cluster.READINGS) + len(cluster.DIGITS_AND_GEARS))
     advances.extend(100 + i for i in range(len(cluster.CAPTIONS)))
-    return {"type": "lettering", "version": 3, "png": base64.b64encode(png.getvalue()).decode(),
+    return {"type": "lettering", "version": 4, "png": base64.b64encode(png.getvalue()).decode(),
             "advances": advances}
 
 
@@ -96,6 +96,23 @@ class InstrumentTests(unittest.TestCase):
                          ["60", "mph", "161", "km"])
         self.assertEqual(labels({"range_m_aaos": 160934.4, "distance_unit": "mi"}), ["–", "100", "mi"])
 
+    def test_ready_only_under_the_driving_percentage_for_a_reported_departure(self):
+        fields = {"speed_display_aaos": 0, "soc_aaos": 90, "usable_capacity_wh": 100}
+        for dark in (False, True):
+            for gear in ("P", "N", "D", "R"):
+                for cue in (None, "welcome", "ready"):
+                    with self.subTest(dark=dark, gear=gear, cue=cue), patch("cluster.paint_text", wraps=cluster.paint_text) as text:
+                        cluster.draw(canvas(), 960, 240, dict(fields, gear_selected=gear, start_cue=cue), dark=dark)
+                        calls = {call.args[1]: call.args for call in text.call_args_list}
+                        expected = cue == "ready" and gear in ("D", "R")
+                        self.assertEqual("READY" in calls, expected)
+                        if expected:
+                            _, _, x, y, size, color, _ = calls["READY"]
+                            self.assertEqual(x, calls["90"][2])
+                            self.assertGreater(y - size, calls["%"][3])
+                            self.assertLess(size, calls["90"][4])
+                            self.assertGreater(int(color[3:5], 16), max(int(color[1:3], 16), int(color[5:], 16)))
+
     def test_usable_capacity_and_unknown_signals(self):
         self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 50, "pack_capacity_wh": 100}), ["–", "90", "%"])
         self.assertEqual(labels({"soc_aaos": 45, "usable_capacity_wh": 0, "pack_capacity_wh": 100}), ["–", "45", "%"])
@@ -116,7 +133,7 @@ class InstrumentTests(unittest.TestCase):
             rows = []
             for engaged in (False, True):
                 ctx = canvas()
-                cluster.draw(ctx, 960, 240, dict(fields, before_drive=welcome, parking_brake=engaged))
+                cluster.draw(ctx, 960, 240, dict(fields, start_cue="welcome" if welcome else None, parking_brake=engaged))
                 surface = ctx.get_target()
                 surface.flush()
                 stride = surface.get_stride()
@@ -141,9 +158,9 @@ class InstrumentTests(unittest.TestCase):
                     self.assertEqual(cluster.display_mode(dict(fields, **change)), "driving")
 
     def test_welcome_requires_confirmed_stationary_park_before_driving(self):
-        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
+        parked = {"start_cue": "welcome", "gear_selected": "P", "speed_display_aaos": 0}
         self.assertEqual(cluster.display_mode(parked), "welcome")
-        for changes in ({"before_drive": False}, {"gear_selected": "D"}, {"gear_selected": "R"},
+        for changes in ({"start_cue": None}, {"gear_selected": "D"}, {"gear_selected": "R"},
                         {"gear_selected": "N"}, {"gear_selected": "UNKNOWN"}, {"speed_display_aaos": -0.1},
                         {"speed_display_aaos": None}):
             with self.subTest(changes=changes):
@@ -158,7 +175,7 @@ class InstrumentTests(unittest.TestCase):
 
     @patch("cluster.time.monotonic")
     def test_welcome_entrance_and_interrupted_handoff(self, clock):
-        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0}
+        parked = {"start_cue": "welcome", "gear_selected": "P", "speed_display_aaos": 0}
         moving = dict(parked, gear_selected="R", speed_display_aaos=-5)
         transition = cluster.FaceTransition()
 
@@ -180,7 +197,7 @@ class InstrumentTests(unittest.TestCase):
 
     @patch("cluster.time.monotonic")
     def test_whole_welcome_crossfades_over_the_live_driving_face(self, clock):
-        parked = {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0,
+        parked = {"start_cue": "welcome", "gear_selected": "P", "speed_display_aaos": 0,
                   "range_m_aaos": 128_000, "soc_aaos": 31, "usable_capacity_wh": 100}
         selected = dict(parked, gear_selected="D", range_m_aaos=127_000)
         moving = dict(selected, speed_display_aaos=5, battery_power_mw=-12_000_000)
@@ -270,7 +287,7 @@ class InstrumentTests(unittest.TestCase):
     def test_snowflake_follows_pack_temperature_on_each_face(self):
         faces = (
             {"gear_selected": "D"},
-            {"before_drive": True, "gear_selected": "P", "speed_display_aaos": 0},
+            {"start_cue": "welcome", "gear_selected": "P", "speed_display_aaos": 0},
             {"charge_port_connected": True},
             {"charge_state": "charging"},
             {"charge_state": "full"},
@@ -399,6 +416,6 @@ class StreamTests(unittest.TestCase):
 
     def test_reject_unexpected_lettering(self):
         frame = lettering_frame()
-        for malformed in (dict(frame, version=2), dict(frame, png="AAAA")):
+        for malformed in (dict(frame, version=3), dict(frame, png="AAAA")):
             with self.assertRaises(ValueError):
                 Stream().feed(json.dumps(malformed).encode() + b"\n")
