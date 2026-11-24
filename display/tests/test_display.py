@@ -127,6 +127,46 @@ class InstrumentTests(unittest.TestCase):
             cluster.draw(canvas(), 960, 240, {"parking_brake": True})
             brake.assert_called_once()
 
+    def test_turn_arrows_follow_each_reported_lamp_on_every_face(self):
+        parked = {"gear_selected": "P", "speed_display_aaos": 0, "start_cue": "welcome"}
+        for fields in ({"gear_selected": "D"}, parked, dict(parked, charge_state="charging")):
+            for dark in (False, True):
+                green = int((cluster.NIGHT if dark else cluster.DAY)[5][1:], 16)
+                ctx = canvas()
+                surface = ctx.get_target()
+                for mask, expected in [(2, (True, False)), (1, (False, True)), (3, (True, True)),
+                                       (0, (False, False)), (3, (True, True)), (None, (False, False)),
+                                       (-1, (False, False)), (5, (False, False)), (True, (False, False)),
+                                       (2.0, (False, False))]:
+                    with self.subTest(fields=fields, dark=dark, mask=mask):
+                        sample = fields if mask is None else dict(fields, turn_signal_lights=mask)
+                        cluster.draw(ctx, 960, 240, sample, dark=dark)
+                        surface.flush()
+                        pixels = memoryview(surface.get_data()).cast("I")
+                        # Sample the upper part of each arrowhead on its outward-facing side.
+                        lit = tuple(pixels[23 * 960 + x] & 0xffffff == green for x in (316, 644))
+                        self.assertEqual(lit, expected)
+                        for x in (324, 636):
+                            self.assertNotEqual(pixels[23 * 960 + x] & 0xffffff, green)
+
+    def test_odometer_is_optional_and_uses_whole_distance_units_only_on_welcome(self):
+        parked = {"gear_selected": "P", "speed_display_aaos": 0, "start_cue": "welcome", "speed_unit": "mph"}
+        for metres, unit, expected in [
+            (1_897_750, "km", ["1", "897", "km"]), (1_609_343.9, "mi", ["999", "mi"]),
+            (1_000_000.75, "m", ["1", "000", "000", "m"]), (0, "mi", ["0", "mi"]),
+            (-1, "km", []), (float("nan"), "mi", []), (float("inf"), "km", []), (True, "mi", []),
+            ("1897", "km", []), (None, "km", []), (1000, "unknown", []),
+        ]:
+            with self.subTest(metres=metres, unit=unit):
+                fields = dict(parked, distance_unit=unit)
+                if metres is not None:
+                    fields["odometer_m"] = metres
+                self.assertEqual(labels(fields), [*cluster.WELCOME_LABELS, *expected])
+        for changes in ({"gear_selected": "D"}, {"start_cue": "ready", "gear_selected": "R"},
+                        {"charge_state": "charging"}, {"charge_port_connected": True}):
+            with self.subTest(changes=changes):
+                self.assertNotIn("897", labels(dict(parked, odometer_m=897_000, **changes)))
+
     def test_parking_brake_does_not_join_the_previous_text_path(self):
         fields = {"gear_selected": "P", "speed_display_aaos": 0, "soc_aaos": 64, "usable_capacity_wh": 100}
         for welcome in (False, True):
@@ -194,11 +234,15 @@ class InstrumentTests(unittest.TestCase):
         self.assertFalse(frame(5, moving)[0])
         frame(6, parked)
         self.assertNotIn("Hello", frame(6, moving)[1])  # Shift before the greeting ever became visible.
+        with_mileage = dict(parked, odometer_m=897_000)
+        frame(7, with_mileage)
+        self.assertIn("897", frame(8, with_mileage)[1])
+        self.assertNotIn("897", frame(9, moving)[1])  # A withdrawn reading also clears during the fade.
 
     @patch("cluster.time.monotonic")
     def test_whole_welcome_crossfades_over_the_live_driving_face(self, clock):
         parked = {"start_cue": "welcome", "gear_selected": "P", "speed_display_aaos": 0,
-                  "range_m_aaos": 128_000, "soc_aaos": 31, "usable_capacity_wh": 100}
+                  "range_m_aaos": 128_000, "soc_aaos": 31, "usable_capacity_wh": 100, "odometer_m": 1_897_000}
         selected = dict(parked, gear_selected="D", range_m_aaos=127_000)
         moving = dict(selected, speed_display_aaos=5, battery_power_mw=-12_000_000)
 
@@ -393,7 +437,8 @@ class StreamTests(unittest.TestCase):
     def test_partial_line_full_replacement_and_stale_reset(self, lettering):
         stream = Stream()
         frames = [{"type": "lettering"},
-                  {"type": "state", "fields": {"night_mode": False, "speed_display_aaos": 20}},
+                  {"type": "state", "fields": {"night_mode": False, "speed_display_aaos": 20,
+                                               "turn_signal_lights": 3, "odometer_m": 1_897_750}},
                   {"type": "state", "fields": {"night_mode": False}}]
         data = b"".join(json.dumps(f).encode() + b"\n" for f in frames)
         with patch("stream.time.monotonic", return_value=100):

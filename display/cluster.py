@@ -224,6 +224,21 @@ def parking_brake(ctx, lettering, ink):
     paint_text(ctx, "P", x, y + 9, 24, ink, lettering, weight=1, align=0.5)
 
 
+def turn_arrows(ctx, mask, color):
+    if type(mask) is not int or mask not in (1, 2, 3):
+        return
+    ctx.new_path()
+    # The AAOS left flag is 0x2 and the right flag is 0x1.
+    for bit, x, direction in ((2, WIDTH / 3, -1), (1, 2 * WIDTH / 3, 1)):
+        if mask & bit:
+            ctx.move_to(x + direction * 24, 41)
+            for dx, dy in ((3, -18), (3, -8), (-24, -8), (-24, 8), (3, 8), (3, 18)):
+                ctx.line_to(x + direction * dx, 41 + dy)
+            ctx.close_path()
+    set_color(ctx, color)
+    ctx.fill()
+
+
 def power_meter(ctx, milliwatts, ink, track, regen):
     # Battery power is positive under regen in the fork's wire convention.
     x, neutral = 1785, 211
@@ -264,12 +279,12 @@ def charge_plug(ctx, x, y, height, ink):
     ctx.restore()
 
 
-def range_reading(fields):
-    distance = number(fields, "range_m_aaos")
+def distance_reading(fields, key):
+    distance = number(fields, key)
     unit = fields.get("distance_unit", "km")
     divisor = {"mi": 1609.344, "km": 1000, "m": 1}.get(unit)
     if distance is not None and distance >= 0 and divisor:
-        return whole(distance / divisor), unit
+        return distance / divisor, unit
     return None
 
 
@@ -324,9 +339,10 @@ def display_mode(fields):
 
 
 def charging_details(fields, mode):
-    distance = range_reading(fields)
+    distance = distance_reading(fields, "range_m_aaos")
     if distance:
-        yield distance
+        value, unit = distance
+        yield whole(value), unit
     if mode != "charging":
         return
     remaining = number(fields, "charge_seconds_remaining")
@@ -426,10 +442,10 @@ def paint_charging(ctx, fields, lettering, face_height, dark, mode):
 def paint_energy(ctx, fields, lettering, dark, reading_x):
     _, ink, secondary, *_ = NIGHT if dark else DAY
     reading_ink = ink if dark else "#686868"
-    distance = range_reading(fields)
+    distance = distance_reading(fields, "range_m_aaos")
     if distance:
         value, unit = distance
-        advance = paint_text(ctx, value, reading_x, 202, 63, reading_ink, lettering)
+        advance = paint_text(ctx, whole(value), reading_x, 202, 63, reading_ink, lettering)
         paint_text(ctx, unit, reading_x + advance + 5, 202, 33, reading_ink, lettering)
 
     percent = battery_percent(fields)
@@ -453,9 +469,17 @@ def paint_energy(ctx, fields, lettering, dark, reading_x):
 
 def paint_welcome(ctx, fields, lettering, dark):
     _, ink, secondary, *_ = NIGHT if dark else DAY
+    caption_ink = secondary if dark else "#686868"
     paint_text(ctx, WELCOME_LABELS[0], 256, 213, 88, ink, lettering, weight=1)
-    paint_text(ctx, WELCOME_LABELS[1], 256, 271, 32, secondary if dark else "#686868", lettering)
-    paint_energy(ctx, fields, lettering, dark, 1410)
+    paint_text(ctx, WELCOME_LABELS[1], 256, 271, 32, caption_ink, lettering)
+    x = 1410
+    paint_energy(ctx, fields, lettering, dark, x)
+    odometer = distance_reading(fields, "odometer_m")
+    if odometer:
+        value, unit = odometer
+        groups = f"{int(value):,}".split(",")
+        for token in groups + [unit]:
+            x += paint_text(ctx, token, x, 390, 28, caption_ink, lettering) + 6
 
 
 def paint_driving(ctx, fields, lettering, face_height, dark):
@@ -519,7 +543,7 @@ def fade(ctx, opacity, painter, *args):
 
 
 def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", transition=None):
-    bg, _, secondary, _, brake, _ = NIGHT if dark else DAY
+    bg, _, secondary, _, brake, green = NIGHT if dark else DAY
     mode = display_mode(fields)
     progress = transition.progress(mode, fields) if transition else 1
     if mode in CHARGE_TITLES and not dark:
@@ -547,11 +571,14 @@ def draw(ctx, width, height, fields, lettering=None, *, dark=False, message="", 
             set_color(ctx, bg)
             ctx.paint()
             ctx.translate(0, FADE_OFFSET * transition.departure * progress)
-            fade(ctx, transition.departure, paint_welcome, transition.welcome_fields, lettering, dark)
+            # A withdrawn reading should also disappear from the outgoing face.
+            welcome = {key: value for key, value in transition.welcome_fields.items() if key in fields}
+            fade(ctx, transition.departure, paint_welcome, welcome, lettering, dark)
             ctx.pop_group_to_source()
             ctx.paint_with_alpha(1 - progress)
     if fields.get("parking_brake") is True:
         parking_brake(ctx, lettering, brake)
+    turn_arrows(ctx, fields.get("turn_signal_lights"), green)
     if message:
         paint_text(ctx, message, 960, 404, 30, secondary, align=0.5)
     ctx.restore()

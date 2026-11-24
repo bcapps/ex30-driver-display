@@ -30,6 +30,7 @@ No Wi-Fi password, camera, OBD adapter or internet connection is needed for the 
 | Battery | Percentage calculated from remaining energy and usable capacity, with nominal capacity as a fallback. The battery icon changes from neutral to amber at 15%, orange at 10%, and red at 5%. The car’s low-energy flag can also turn it amber. |
 | Cold battery | A snowflake appears beside the battery percentage when the car reports a pack temperature below 0°C (32°F). |
 | Gear and parking brake | The selected P, R, N or D is highlighted. The red parking-brake symbol follows its own switch. |
+| Turn signals | Green arrows above the instruments follow the actual lamp pulses, including both arrows for hazards. They appear on any active face when the car supplies the reading. |
 | Power and charging | A signed battery-power bar estimates draw and regeneration. A plug appears when the cable is connected. The factory meter’s available-power limits and friction-brake section require more signals. |
 | Day and night | The app sends AAOS’s current appearance, including changes while the setup screen is closed. The cabin night flag is a fallback. |
 
@@ -45,7 +46,7 @@ Selecting D, R or N, or detecting motion, starts a 320 ms crossfade. The greetin
 
 On the first shift from Park into Drive or Reverse, a small green **READY** appears below the battery row, aligned with the left edge of the range and battery icon. It clears above 5 km/h (about 3 mph) or when you select Park or Neutral and stays off at traffic lights. The app infers this cue from gear and speed. The 5 km/h cutoff is our interpretation of Volvo’s “walking pace.” [EX90 starting sequence](https://www.volvocars.com/us/support/car/ex90/article/47d2c97fd33effd3c0a8cc3718c999b7-4e78107d596eb7b6c0a8b0970bdcd43f-8664b2fa77a7e089c0a8296870d1a409/) · [Day preview](docs/ready-day.png) · [Night preview](docs/ready-night.png)
 
-The small odometer in the reference is omitted. The archived EX30 image declares only the privileged mileage permission. Newer Android versions also define a third-party mileage permission. [Android odometer property](https://developer.android.com/reference/android/car/VehiclePropertyIds#PERF_ODOMETER)
+When the car shares its odometer, a small total-distance reading appears beneath the range and battery on the welcome screen. It uses the car’s distance unit and disappears with the greeting. Mileage and turn-signal access are independent and optional. Retail EX30 availability remains unverified. [Android odometer property](https://developer.android.com/reference/android/car/VehiclePropertyIds#PERF_ODOMETER) · [Android turn-signal lamp state](https://developer.android.com/reference/android/car/VehiclePropertyIds#TURN_SIGNAL_LIGHT_STATE)
 
 ## Charging
 
@@ -76,6 +77,8 @@ These 12 kiosk captures at 1280 × 400 use readings from a fresh Bluetooth pairi
 Tested with Google’s Android 15 Automotive emulator and a separate ARM64 Linux VM running BlueZ and the Pi receiver. The two systems paired over virtual Bluetooth radios with Wi-Fi disabled. The display followed active charging and day/night changes. It also recovered after an Android reboot and a receiver restart, and cleared a frozen speed reading in about three seconds before reconnecting. The renderer tests cover wide and 16:9 screens. This fork has been tested in emulation only. A physical Raspberry Pi, panel and retail EX30 still need testing, including Bluetooth pairing and the availability of pack temperature and charging states. [Live kiosk frame with 60 mph, 100 mi of range and 90% charge](docs/live-mph.png)
 
 The welcome flow was also exercised over the paired virtual radios. Selecting a driving gear dismissed the greeting, reconnecting in Park kept the driving instruments, and an ignition sleep/wake cycle restored the greeting. The welcome screenshots and animation come from the Linux kiosk replaying those Android readings and rendered Novum lettering.
+
+On Google’s API 35 Automotive emulator, the vehicle layer reported a zero odometer, but the app had no mileage access. The turn-lamp property was absent. Setup still reached Bluetooth discovery. For the visible cases, the Pi renderer replayed simulated left, right, hazard, off and missing readings from the Android mapper in both themes at 1280 × 400.
 
 ## Project
 

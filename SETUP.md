@@ -71,4 +71,4 @@ python3 display/preview.py night /tmp/ex30-target.png --charging full
 PYTHONPATH=display python3 -m unittest discover -s display/tests -v
 ```
 
-The preview uses example readings. The parked examples accept `--charging idle`, `--charging full`, or `--charging fault`. Supplying a saved lettering frame with `--lettering` uses the same Android-drawn glyphs as a live connection.
+The preview uses example readings. `--welcome` includes an example odometer. Add `--signals left`, `--signals right` or `--signals hazards` to see the lamps during a lit pulse on any face. The parked examples accept `--charging idle`, `--charging full`, or `--charging fault`. Supplying a saved lettering frame with `--lettering` uses the same Android-drawn glyphs as a live connection.
