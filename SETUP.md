@@ -16,7 +16,7 @@ The installer creates the unprivileged `ex30-display` service user and starts a 
 
 ## Android Automotive
 
-The fork’s package is `com.bcapps.ex30display`. It needs AAOS API 32 or later and Bluetooth Classic. Build with Android SDK Platform 35 and JDK 17 or 21.
+The fork’s package is `com.bcapps.ex30display`. It needs AAOS API 32 or later and Bluetooth Classic. Build with Android SDK Platform 36 and JDK 17 or 21.
 
 ```sh
 cd ex30-companion-aaos
@@ -34,7 +34,7 @@ A retail EX30 needs an installation channel Volvo permits. This fork has no Goog
 ## First pairing
 
 1. With the car parked, open **EX30 Driver Display** and tap **Find display**.
-2. Approve the permissions Android shows. Android can group vehicle speed under location, energy under car information and Bluetooth under nearby devices.
+2. Approve the permissions Android shows. Android can group vehicle speed under location, energy under car information and Bluetooth under nearby devices. On cars that offer exterior-light or mileage access, you can grant each to enable the turn arrows or welcome odometer. Pairing works if you decline either.
 3. Select the exact name displayed on your Pi, then tap **Pair** in Android’s system dialog. There is no code to enter. The Pi saves the first bonded car that connects to its display service.
 
 On later trips, the app connects to that display in the background. It closes the connection when the EX30 indicates the driver has left or its screen turns off. A connected charge port keeps the link active. If port status is unavailable, an explicit charging, target-reached or charging-fault state also keeps the link active. After a head-unit reboot the service starts on the normal Android boot broadcast for the user. Force-stopping the Android app requires opening it again.

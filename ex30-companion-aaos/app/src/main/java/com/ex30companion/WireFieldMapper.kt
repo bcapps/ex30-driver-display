@@ -39,6 +39,12 @@ object WireFieldMapper {
                 Wire("battery_power_mw", -(raw as Number).toFloat())
             VehiclePropertyIds.RANGE_REMAINING ->
                 Wire("range_m_aaos", (raw as Number).toFloat())
+            VehiclePropertyIds.PERF_ODOMETER ->
+                (raw as? Float)?.takeIf { it.isFinite() && it >= 0f }
+                    ?.let { Wire("odometer_m", it.toDouble() * 1000) }
+            // VehicleTurnSignal lamp bits are RIGHT = 1 and LEFT = 2. Both are set for a hazard pulse.
+            VehiclePropertyIds.TURN_SIGNAL_LIGHT_STATE ->
+                (raw as? Int)?.takeIf { it in 0..3 }?.let { Wire("turn_signal_lights", it) }
             VehiclePropertyIds.GEAR_SELECTION ->
                 Wire("gear_selected", gearName((raw as Number).toInt()))
             VehiclePropertyIds.PARKING_BRAKE_ON ->

@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -72,7 +73,8 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.RECEIVER_EXPORTED)
         showSelected()
         ui.find.setOnClickListener {
-            val needed = (permissions + PropertyCatalog.dangerousPermissions).filter {
+            val vehiclePermissions = PropertyCatalog.dangerousPermissions.filter(::isRuntimePermission)
+            val needed = (permissions + vehiclePermissions).filter {
                 checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
             }
             if (needed.isEmpty()) findDisplays() else requestAccess.launch(needed.toTypedArray())
@@ -93,6 +95,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasBluetoothAccess() = permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+
+    private fun isRuntimePermission(name: String): Boolean = try {
+        packageManager.getPermissionInfo(name, 0).protection == PermissionInfo.PROTECTION_DANGEROUS
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
 
     private fun findDisplays() {
         val radio = adapter ?: return ui.status.setText(R.string.bluetooth_off)

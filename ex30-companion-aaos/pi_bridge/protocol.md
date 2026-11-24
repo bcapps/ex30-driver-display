@@ -20,6 +20,8 @@ Missing fields clear the previous value. Numeric fields carry m/s, metres, Wh or
 
 `pack_temp_c` is the average traction-battery temperature in degrees Celsius. `battery_low` carries the vehicle’s low-energy flag. Each field is omitted when its reading is unavailable.
 
+`turn_signal_lights` carries the instantaneous AAOS lamp bits. Values are 0 for off, 1 for right, 2 for left and 3 for both. `odometer_m` is the car’s total distance in metres. These fields are independent and optional. Zero is a valid reading for either.
+
 Android sends `start_cue: "welcome"` for the initial stationary Park reading and `start_cue: "ready"` during the following shift into D or R at up to 5 km/h in either direction. Once that departure ends the field is omitted, including at later stops and on Bluetooth reconnects. The car app tracks the cue even while the Pi is disconnected.
 
 Android sends changed readings up to 20 times a second and a current snapshot at least once per second while connected. The Pi allows 15 seconds for initial lettering and state, then clears its instruments after three seconds without a valid snapshot. Each reconnect starts with fresh lettering and a full state.

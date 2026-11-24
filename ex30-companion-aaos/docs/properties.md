@@ -7,10 +7,12 @@ Only supported, permitted, available values enter a snapshot. The app uses the p
 | `PERF_VEHICLE_SPEED_DISPLAY` | Calibrated displayed speed in metres per second. The Pi converts to the selected unit, uses the magnitude in reverse and rounds to a whole number. |
 | `VEHICLE_SPEED_DISPLAY_UNITS`, `DISTANCE_DISPLAY_UNITS` | Independent speed and distance preferences. If absent, US and GB Android locales default to mph and miles, other locales to km/h and kilometres. |
 | `RANGE_REMAINING` | Car-estimated remaining distance in metres. A mile is 1,609.344 m. |
+| `PERF_ODOMETER` | Total vehicle distance in kilometres, converted to metres for Bluetooth. The welcome face shows completed whole units in the selected distance unit. Requires the optional third-party mileage permission. |
 | `EV_BATTERY_LEVEL` | Remaining energy in Wh. Divide by `EV_CURRENT_BATTERY_CAPACITY` or, when unavailable, `INFO_EV_BATTERY_CAPACITY`. The factory’s displayed percentage can differ from this estimate. |
 | `FUEL_LEVEL_LOW` | If the car reports low traction-battery energy, the small battery icon shows at least amber. The rounded percentage also selects amber at 15%, orange at 10%, and red at 5% and below. |
 | `EV_BATTERY_AVERAGE_TEMPERATURE` | A snowflake beside the battery percentage appears below 0°C pack temperature. A reading at or above 0°C, or an unavailable reading, clears it. |
 | `GEAR_SELECTION`, `PARKING_BRAKE_ON` | Highlight the selected gear and show the steady engaged parking brake independently. |
+| `TURN_SIGNAL_LIGHT_STATE` | Actual right and left lamps. Both green arrows light together when both lamps are on. The car supplies each on and off pulse. Requires the optional exterior-light read permission. |
 | `EV_BATTERY_INSTANTANEOUS_CHARGE_RATE` | Upstream observed the EX30 reports the opposite sign to Android’s specification. The app preserves its EX30 sign correction. The Pi gauge spans 200 kW draw and 100 kW regeneration. Those are drawing scales. Volvo’s exact available power, regen limits and friction braking require separate inputs. |
 | `EV_CHARGE_PORT_CONNECTED`, `IGNITION_STATE` | Plug indicator and decisions about leaving or resuming the connection. |
 | `EV_CHARGE_STATE` | Charging, full and error select the corresponding parked face. Full means the configured target was reached. Idle with a connected cable shows “Plugged in”. If the state is unavailable, Park, a connected cable and at least 100 W into the pack qualify as active charging. Motion, a driving gear or a disconnected cable rules out all four charging faces. |
@@ -18,6 +20,8 @@ Only supported, permitted, available values enter a snapshot. The app uses the p
 | `NIGHT_MODE` | Cabin-light fallback when Android’s current UI mode is undefined. The service gives an explicit day/night UI configuration precedence. |
 
 The low-energy flag, pack temperature and charging-state transitions were exercised with simulated readings on Google’s Android 15 Automotive image. Their availability to this app on a retail EX30 still needs confirmation.
+
+Setup requests `READ_CAR_EXTERIOR_LIGHTS` and `CAR_MILEAGE_3P` only on builds that offer them as runtime permissions. Each instrument also needs a supported vehicle property and an available reading. Both permissions are feature-gated in Android 15 r36. Retail EX30 support for each is unverified. [Android 15 car permission declarations](https://android.googlesource.com/platform/packages/services/Car/+/refs/tags/android-15.0.0_r36/service/AndroidManifest.xml) · [Lamp state](https://developer.android.com/reference/android/car/VehiclePropertyIds#TURN_SIGNAL_LIGHT_STATE) · [Odometer](https://developer.android.com/reference/android/car/VehiclePropertyIds#PERF_ODOMETER)
 
 There is no verified ordinary-app feed for the EX30’s recognized road-sign speed limit, the automatic rain-sensor indicator or the factory position-lamp status. The Pi leaves these off the display. The rendered parking-brake symbol reports engagement. A flashing fault indication would need its own source.
 

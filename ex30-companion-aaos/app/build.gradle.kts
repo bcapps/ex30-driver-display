@@ -16,7 +16,7 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.ex30companion"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bcapps.ex30display"
